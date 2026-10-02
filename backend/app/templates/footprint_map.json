@@ -1,0 +1,603 @@
+{
+  "parts": {
+    "ESP32-WROOM-32E": {
+      "symbol": "RF_Module:ESP32-WROOM-32E",
+      "footprint": "RF_Module:ESP32-WROOM-32E",
+      "description": "ESP32 MCU 模组（内置快照库简化 30 pad 版）",
+      "class": "mcu",
+      "pins": [
+        {
+          "num": 1,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 2,
+          "name": "3V3",
+          "func": "power_in"
+        },
+        {
+          "num": 3,
+          "name": "EN",
+          "func": "input"
+        },
+        {
+          "num": 4,
+          "name": "IO0",
+          "func": "bidirectional"
+        },
+        {
+          "num": 5,
+          "name": "IO2",
+          "func": "bidirectional"
+        },
+        {
+          "num": 6,
+          "name": "IO4",
+          "func": "bidirectional"
+        },
+        {
+          "num": 7,
+          "name": "IO12",
+          "func": "bidirectional"
+        },
+        {
+          "num": 8,
+          "name": "IO13",
+          "func": "bidirectional"
+        },
+        {
+          "num": 9,
+          "name": "IO14",
+          "func": "bidirectional"
+        },
+        {
+          "num": 10,
+          "name": "IO15",
+          "func": "bidirectional"
+        },
+        {
+          "num": 11,
+          "name": "IO25",
+          "func": "bidirectional"
+        },
+        {
+          "num": 12,
+          "name": "IO26",
+          "func": "bidirectional"
+        },
+        {
+          "num": 13,
+          "name": "IO27",
+          "func": "bidirectional"
+        },
+        {
+          "num": 14,
+          "name": "IO32",
+          "func": "bidirectional"
+        },
+        {
+          "num": 15,
+          "name": "IO33",
+          "func": "bidirectional"
+        },
+        {
+          "num": 16,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 17,
+          "name": "TXD0",
+          "func": "output"
+        },
+        {
+          "num": 18,
+          "name": "RXD0",
+          "func": "input"
+        },
+        {
+          "num": 19,
+          "name": "IO5",
+          "func": "bidirectional"
+        },
+        {
+          "num": 20,
+          "name": "IO18",
+          "func": "bidirectional"
+        },
+        {
+          "num": 21,
+          "name": "IO19",
+          "func": "bidirectional"
+        },
+        {
+          "num": 22,
+          "name": "IO21",
+          "func": "bidirectional"
+        },
+        {
+          "num": 23,
+          "name": "IO22",
+          "func": "bidirectional"
+        },
+        {
+          "num": 24,
+          "name": "IO23",
+          "func": "bidirectional"
+        },
+        {
+          "num": 25,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 26,
+          "name": "SENSOR_VP",
+          "func": "input"
+        },
+        {
+          "num": 27,
+          "name": "SENSOR_VN",
+          "func": "input"
+        },
+        {
+          "num": 28,
+          "name": "IO34",
+          "func": "input"
+        },
+        {
+          "num": 29,
+          "name": "IO35",
+          "func": "input"
+        },
+        {
+          "num": 30,
+          "name": "GND",
+          "func": "power_in"
+        }
+      ]
+    },
+    "DS18B20": {
+      "symbol": "Sensor_Temperature:DS18B20",
+      "footprint": "Package_TO_SOT_THT:TO-92_Inline",
+      "description": "数字温度传感器（1-Wire）",
+      "class": "sensor_temperature",
+      "pins": [
+        {
+          "num": 1,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 2,
+          "name": "DQ",
+          "func": "bidirectional"
+        },
+        {
+          "num": 3,
+          "name": "VDD",
+          "func": "power_in"
+        }
+      ]
+    },
+    "DHT22": {
+      "symbol": "Sensor_Humidity:DHT22",
+      "footprint": "Package_TO_SOT_THT:TO-92_Inline",
+      "description": "温湿度传感器（单总线）",
+      "class": "sensor_humidity",
+      "pins": [
+        {
+          "num": 1,
+          "name": "VCC",
+          "func": "power_in"
+        },
+        {
+          "num": 2,
+          "name": "DATA",
+          "func": "bidirectional"
+        },
+        {
+          "num": 3,
+          "name": "NC",
+          "func": "no_connect"
+        },
+        {
+          "num": 4,
+          "name": "GND",
+          "func": "power_in"
+        }
+      ]
+    },
+    "SSD1306": {
+      "symbol": "Display:SSD1306_I2C",
+      "footprint": "vibepcb:OLED_0.96in_4P",
+      "description": "0.96 寸 OLED（I2C 模块，外接排针）",
+      "class": "display",
+      "pins": [
+        {
+          "num": 1,
+          "name": "VCC",
+          "func": "power_in"
+        },
+        {
+          "num": 2,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 3,
+          "name": "SCL",
+          "func": "input"
+        },
+        {
+          "num": 4,
+          "name": "SDA",
+          "func": "bidirectional"
+        }
+      ]
+    },
+    "AO3400A": {
+      "symbol": "Device:Q_NMOS_GSD",
+      "footprint": "Package_TO_SOT_SMD:SOT-23",
+      "description": "加热回路低边开关 nMOS",
+      "class": "transistor",
+      "pins": [
+        {
+          "num": 1,
+          "name": "G",
+          "func": "input"
+        },
+        {
+          "num": 2,
+          "name": "S",
+          "func": "power_in"
+        },
+        {
+          "num": 3,
+          "name": "D",
+          "func": "power_out"
+        }
+      ]
+    },
+    "AMS1117-3.3": {
+      "symbol": "Regulator_Linear:AMS1117-3.3",
+      "footprint": "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
+      "description": "5V→3.3V LDO",
+      "class": "regulator",
+      "pins": [
+        {
+          "num": 1,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 2,
+          "name": "VO",
+          "func": "power_out"
+        },
+        {
+          "num": 3,
+          "name": "VI",
+          "func": "power_in"
+        }
+      ]
+    },
+    "R": {
+      "symbol": "Device:R",
+      "footprint": "Resistor_SMD:R_0805_2012Metric",
+      "description": "上拉/栅极/限流电阻",
+      "class": "resistor",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        }
+      ]
+    },
+    "C": {
+      "symbol": "Device:C",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "description": "去耦电容",
+      "class": "capacitor",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        }
+      ]
+    },
+    "LED": {
+      "symbol": "Device:LED",
+      "footprint": "LED_SMD:LED_0805_2012Metric",
+      "description": "状态指示灯",
+      "class": "led",
+      "pins": [
+        {
+          "num": 1,
+          "name": "K",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "A",
+          "func": "passive"
+        }
+      ]
+    },
+    "SW_PUSH": {
+      "symbol": "Switch:SW_Push",
+      "footprint": "Button_Switch_THT:SW_PUSH_6mm",
+      "description": "轻触按键",
+      "class": "switch",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        }
+      ]
+    },
+    "PWR_FLAG": {
+      "symbol": "power:PWR_FLAG",
+      "footprint": "vibepcb:PWR_FLAG_Snapshot",
+      "description": "电源标志（ERC 驱动能力声明，KiCad 惯例）",
+      "class": "power_flag",
+      "pins": [
+        {
+          "num": 1,
+          "name": "PWR",
+          "func": "power_out"
+        }
+      ]
+    },
+    "Conn_01x02": {
+      "symbol": "Connector:Conn_01x02",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+      "description": "2Pin 连接器（电源输入/加热输出）",
+      "class": "connector",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        }
+      ]
+    },
+    "USB_C_Power": {
+      "symbol": "Connector:USB_C_Receptacle_PowerOnly",
+      "footprint": "vibepcb:USB_C_PowerOnly_Snapshot",
+      "description": "USB-C 电源输入（内置快照简化版）",
+      "class": "connector",
+      "pins": [
+        {
+          "num": 1,
+          "name": "VBUS",
+          "func": "power_out"
+        },
+        {
+          "num": 2,
+          "name": "GND",
+          "func": "power_in"
+        },
+        {
+          "num": 3,
+          "name": "SHIELD",
+          "func": "passive"
+        }
+      ]
+    }
+  },
+  "default_footprint_by_class": {
+    "resistor": "Resistor_SMD:R_0805_2012Metric",
+    "capacitor": "Capacitor_SMD:C_0805_2012Metric",
+    "led": "LED_SMD:LED_0805_2012Metric",
+    "transistor": "Package_TO_SOT_SMD:SOT-23",
+    "regulator": "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
+    "sensor_temperature": "Package_TO_SOT_THT:TO-92_Inline",
+    "display": "vibepcb:OLED_0.96in_4P",
+    "connector": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+    "switch": "Button_Switch_THT:SW_PUSH_6mm"
+  },
+  "presets": {
+    "esp32_thermo": {
+      "match_keywords": [
+        "温控",
+        "温度",
+        "thermo",
+        "temperature",
+        "加热",
+        "heater"
+      ],
+      "description": "ESP32 温控器套件：DS18B20 测温 + AO3400A PWM 加热 + SSD1306 显示 + AMS1117 电源",
+      "components": [
+        {
+          "ref": "U1",
+          "value": "ESP32-WROOM-32E",
+          "qty": 1
+        },
+        {
+          "ref": "U2",
+          "value": "DS18B20",
+          "qty": 1
+        },
+        {
+          "ref": "U3",
+          "value": "SSD1306",
+          "qty": 1
+        },
+        {
+          "ref": "Q1",
+          "value": "AO3400A",
+          "qty": 1
+        },
+        {
+          "ref": "U4",
+          "value": "AMS1117-3.3",
+          "qty": 1
+        },
+        {
+          "ref": "R*",
+          "value": "10k/100R",
+          "qty": 6
+        },
+        {
+          "ref": "C*",
+          "value": "100nF/10uF",
+          "qty": 8
+        },
+        {
+          "ref": "J1",
+          "value": "USB_C_Power",
+          "qty": 1
+        },
+        {
+          "ref": "J2",
+          "value": "Conn_01x02",
+          "qty": 1
+        },
+        {
+          "ref": "D1",
+          "value": "LED",
+          "qty": 1
+        }
+      ],
+      "nets_expected": [
+        "3V3",
+        "GND",
+        "5V",
+        "ONEWIRE",
+        "I2C_SDA",
+        "I2C_SCL",
+        "HEATER_PWM",
+        "LED_STATUS"
+      ]
+    },
+    "esp32_sensor_node": {
+      "match_keywords": [
+        "传感器",
+        "采集",
+        "sensor",
+        "监测",
+        "上报",
+        "温湿度"
+      ],
+      "description": "ESP32 传感节点套件：DHT22 + OLED + AMS1117",
+      "components": [
+        {
+          "ref": "U1",
+          "value": "ESP32-WROOM-32E",
+          "qty": 1
+        },
+        {
+          "ref": "U2",
+          "value": "DHT22",
+          "qty": 1
+        },
+        {
+          "ref": "U3",
+          "value": "SSD1306",
+          "qty": 1
+        },
+        {
+          "ref": "U4",
+          "value": "AMS1117-3.3",
+          "qty": 1
+        },
+        {
+          "ref": "R*",
+          "value": "10k",
+          "qty": 4
+        },
+        {
+          "ref": "C*",
+          "value": "100nF/10uF",
+          "qty": 6
+        },
+        {
+          "ref": "J1",
+          "value": "USB_C_Power",
+          "qty": 1
+        },
+        {
+          "ref": "D1",
+          "value": "LED",
+          "qty": 1
+        }
+      ],
+      "nets_expected": [
+        "3V3",
+        "GND",
+        "5V",
+        "DHT_DATA",
+        "I2C_SDA",
+        "I2C_SCL",
+        "LED_STATUS"
+      ]
+    },
+    "esp32_generic": {
+      "match_keywords": [],
+      "description": "ESP32 通用套件：最小系统 + 电源 + 状态灯",
+      "components": [
+        {
+          "ref": "U1",
+          "value": "ESP32-WROOM-32E",
+          "qty": 1
+        },
+        {
+          "ref": "U4",
+          "value": "AMS1117-3.3",
+          "qty": 1
+        },
+        {
+          "ref": "R*",
+          "value": "10k",
+          "qty": 3
+        },
+        {
+          "ref": "C*",
+          "value": "100nF/10uF",
+          "qty": 5
+        },
+        {
+          "ref": "J1",
+          "value": "USB_C_Power",
+          "qty": 1
+        },
+        {
+          "ref": "D1",
+          "value": "LED",
+          "qty": 1
+        }
+      ],
+      "nets_expected": [
+        "3V3",
+        "GND",
+        "5V",
+        "LED_STATUS"
+      ]
+    }
+  }
+}

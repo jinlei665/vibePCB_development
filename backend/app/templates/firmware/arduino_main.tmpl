@@ -1,0 +1,54 @@
+// {product_name} —— VibePCB 生成（模板拼装，降级产物）
+// MCU: {mcu}
+// 引脚分配（与原理图/PCB 一致）：
+//   ONEWIRE (DS18B20) : IO4      I2C SDA (OLED) : IO21
+//   I2C SCL (OLED)    : IO22    加热 PWM (MOSFET): IO25
+//   状态 LED           : IO2
+// WiFi/MQTT 凭据请在下方常量处填写
+#include <Arduino.h>
+
+{includes}
+
+// ---------------- 用户配置（占位，请自行填写） ----------------
+const char* WIFI_SSID     = "YOUR_WIFI_SSID";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* MQTT_BROKER   = "192.168.1.100";
+const int   MQTT_PORT     = 1883;
+const char* CLIENT_ID     = "{client_id}";
+const char* TOPIC_TEMP    = "{client_id}/temperature";
+const char* TOPIC_STATE   = "{client_id}/heater";
+
+// ---------------- 温控参数（滞回控制） ----------------
+const float TARGET_TEMP   = 28.0;   // 目标温度 °C
+const float HYSTERESIS    = 0.5;    // 滞回 °C
+const int   PIN_ONEWIRE   = 4;
+const int   PIN_HEATER    = 25;
+const int   PIN_LED       = 2;
+
+{objects}
+
+bool heaterOn = false;
+
+void setup() {{
+  Serial.begin(115200);
+  pinMode(PIN_HEATER, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_HEATER, LOW);
+{setup}
+}}
+
+void loop() {{
+{loop}
+  // 滞回温控
+  if (temperature < TARGET_TEMP - HYSTERESIS && !heaterOn) {{
+    heaterOn = true;
+  }} else if (temperature > TARGET_TEMP + HYSTERESIS && heaterOn) {{
+    heaterOn = false;
+  }}
+  digitalWrite(PIN_HEATER, heaterOn ? HIGH : LOW);
+  digitalWrite(PIN_LED, heaterOn ? HIGH : LOW);
+  mqtt.publish(TOPIC_STATE, heaterOn ? "ON" : "OFF");
+
+  Serial.printf("T=%.2fC heater=%s\\n", temperature, heaterOn ? "ON" : "OFF");
+  delay(1000);
+}}
