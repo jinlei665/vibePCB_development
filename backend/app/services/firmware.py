@@ -41,7 +41,7 @@ def run_firmware(ws: ProjectWorkspace) -> dict:
 
     if settings.deepseek_api_key:
         try:
-            client = DeepSeekClient(settings)
+            client = DeepSeekClient()
             code = _generate_with_deepseek(client, spec, bom)
             engine = "deepseek"
         except DeepSeekError as exc:
@@ -96,8 +96,8 @@ def _generate_with_deepseek(client: DeepSeekClient, spec: dict, bom: dict) -> st
         "串口日志。只输出代码本体，不要 markdown 围栏。"
     )
     code = client.chat_json(
-        [{"role": "user", "content": prompt}],
-        schema_hint={"code": "string (Arduino sketch source)"},
+        [{"role": "user", "content": prompt + "\n\n请以 JSON 对象 {\"code\": \"<完整代码>\"} 返回。"}],
+        max_tokens=16384,
     )
     if isinstance(code, dict) and "code" in code:
         code = code["code"]
@@ -248,18 +248,59 @@ def _firmware_readme(spec: dict, engine: str) -> str:
     )
 
 
+def _strip_comments(code: str) -> str:
+    """剥离 C/Arduino 注释（块注释 /* */ 与行注释 //），不误伤字符串字面量。
+
+    自检的括号/引号配平必须在剥离注释后统计——固件头注释常见
+    形如 `0.96" OLED` 的英寸写法，会干扰 quote_balance。
+    """
+    out = []
+    i, n = 0, len(code)
+    in_string = False
+    while i < n:
+        ch = code[i]
+        nxt = code[i + 1] if i + 1 < n else ""
+        if in_string:
+            out.append(ch)
+            if ch == "\\" and nxt:
+                out.append(nxt)
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+            i += 1
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and nxt == "*":
+            end = code.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        if ch == "/" and nxt == "/":
+            end = code.find("\n", i)
+            i = n if end == -1 else end  # 保留换行符本身
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 # ---------------------------------------------------------------- 自检
 def self_check(main_file: Path, spec: dict) -> dict:
     code = main_file.read_text(encoding="utf-8")
+    cleaned = _strip_comments(code)
     checks = []
     # 括号配平
     checks.append({
         "name": "brace_balance",
-        "passed": code.count("{") == code.count("}"),
-        "detail": {"open": code.count("{"), "close": code.count("}")},
+        "passed": cleaned.count("{") == cleaned.count("}"),
+        "detail": {"open": cleaned.count("{"), "close": cleaned.count("}")},
     })
     # 引号配平（忽略转义）
-    stripped = re.sub(r'\\.', "", code)
+    stripped = re.sub(r'\\.', "", cleaned)
     checks.append({
         "name": "quote_balance",
         "passed": stripped.count('"') % 2 == 0,

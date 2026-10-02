@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from ..core.deepseek_client import DeepSeekError, deepseek_client
 from ..core.workspace import ProjectWorkspace
 from ..templates.schematic.common import FOOTPRINT_MAP, PARTS
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+FP_LIBS_DIR = TEMPLATES_DIR / "footprint_libs"
 
 logger = logging.getLogger("vibepcb.selector")
 
@@ -50,17 +54,42 @@ def _preset_bom(preset: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# ref 前缀 → 快照库内同族代表器件（映射不到时的归类兜底）
+_REF_PART = {
+    "Q": "AO3400A",      # 晶体管/MOSFET → SOT-23
+    "J": "Conn_01x02",   # 连接器 → 1x02 排针
+    "SW": "SW_PUSH", "S": "SW_PUSH",
+    "R": "R", "C": "C", "D": "LED",
+    "U": "AMS1117-3.3",
+}
+
+
+def _snapshot_exists(fp: str) -> bool:
+    """footprint ID 是否存在于内置快照库。"""
+    if ":" not in fp:
+        return False
+    lib, name = fp.split(":", 1)
+    return (FP_LIBS_DIR / f"{lib}.pretty" / f"{name}.kicad_mod").exists()
+
+
 def _validate_components(comps: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
     """逐器件校正：symbol/footprint 必须能落到快照库；映射不到的用同类默认项替换。"""
     valid, warnings = [], []
     defaults = FOOTPRINT_MAP["default_footprint_by_class"]
     for c in comps:
         value = str(c.get("value", "")).strip()
+        # 匹配顺序：精确值 → 长 key 子串（单字母通件 key 不做子串，避免
+        # "IRLZ44n" 命中 R / "Conn_01x03" 命中 C）→ symbol 反查 → ref 前缀归类
         key = None
-        for k, info in PARTS.items():
-            if k.lower() in value.lower():
+        for k in sorted(PARTS, key=len, reverse=True):
+            if k.lower() == value.lower():
                 key = k
                 break
+        if key is None:
+            for k in sorted(PARTS, key=len, reverse=True):
+                if len(k) > 1 and k.lower() in value.lower():
+                    key = k
+                    break
         if key is None:
             # 尝试按 symbol 名反查
             sym = str(c.get("symbol", ""))
@@ -69,6 +98,11 @@ def _validate_components(comps: list[dict[str, Any]]) -> tuple[list[dict[str, An
                     key = k
                     break
         if key is None:
+            # ref 前缀归类到快照库内的同族代表器件
+            ref = str(c.get("ref", "")).strip()
+            prefix = "".join(ch for ch in ref if ch.isalpha()).upper()
+            key = _REF_PART.get(prefix)
+        if key is None:
             warnings.append(f"未识别器件 {c.get('ref','?')} ({value})，标 DNP 不进网表")
             continue
         info = PARTS[key]
@@ -76,9 +110,13 @@ def _validate_components(comps: list[dict[str, Any]]) -> tuple[list[dict[str, An
         fixed["value"] = value or key
         fixed["qty"] = int(c.get("qty") or 1)
         fixed["symbol"] = info["symbol"]
-        fixed["footprint"] = info["footprint"]
+        proposed_fp = str(c.get("footprint", "")).strip()
+        if _snapshot_exists(proposed_fp) and proposed_fp != info["footprint"]:
+            fixed["footprint"] = proposed_fp
+        else:
+            fixed["footprint"] = info["footprint"]
         fixed["description"] = c.get("description") or info["description"]
-        if str(c.get("footprint", "")) and str(c["footprint"]) != info["footprint"]:
+        if str(c.get("footprint", "")) and str(c["footprint"]) != fixed["footprint"]:
             warnings.append(
                 f"{fixed.get('ref','?')}: footprint {c['footprint']} 不在快照库，"
                 f"已替换为 {info['footprint']}"

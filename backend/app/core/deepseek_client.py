@@ -60,7 +60,7 @@ class DeepSeekClient:
         messages: list[dict[str, str]],
         *,
         model: Optional[str] = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
     ) -> dict[str, Any]:
         """请求模型并解析 JSON 输出。三级降级链在此实现前两级（重试 + 备用模型），
         第三级（rule-based）由调用方实现。"""
@@ -109,15 +109,32 @@ class DeepSeekClient:
             "response_format": {"type": "json_object"},
             "max_tokens": max_tokens,
             "temperature": 0.2,
+            # deepseek-flash 为推理模型：默认 high 档会把 max_tokens 烧在
+            # reasoning_content 上导致 content 为空（finish_reason=length，
+            # 实测复现）；low 档保留少量推理即可稳定产出 JSON。
+            "reasoning_effort": "low",
         }
         headers = {}
         if settings.deepseek_api_key:
             # 密钥仅进入请求头；任何日志输出前都会经 mask_key。
             headers["Authorization"] = f"Bearer {settings.deepseek_api_key}"
         resp = self.client.post("/chat/completions", json=payload, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # 401/400/429/5xx 等一律转 DeepSeekError，走既有重试+降级链；
+            # 此前 HTTPStatusError 裸穿导致阶段 500 而非降级（无效 Key 实测复现）
+            raise DeepSeekError(
+                "DEEPSEEK_UNAVAILABLE",
+                f"HTTP {resp.status_code}: {resp.text[:200]}",
+            ) from exc
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError) as exc:
+            raise DeepSeekError(
+                "DEEPSEEK_UNAVAILABLE", f"响应缺少 choices/content：{str(data)[:200]}"
+            ) from exc
         return self._loads(content)
 
     @staticmethod

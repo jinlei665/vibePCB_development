@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:desktop": "vite build --mode desktop && electron-builder --dir",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV=1 electron .\"",
-    "electron:build": "vite build && electron-builder --dir",
+    "electron:build": "npm run build:desktop",
     "start": "npm run electron:dev"
   },
   "dependencies": {

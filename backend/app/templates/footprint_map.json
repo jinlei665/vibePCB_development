@@ -408,6 +408,57 @@
           "func": "passive"
         }
       ]
+    },
+    "Conn_01x03": {
+      "symbol": "Connector:Conn_01x03",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+      "description": "3Pin 连接器（排针）",
+      "class": "connector",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        },
+        {
+          "num": 3,
+          "name": "3",
+          "func": "passive"
+        }
+      ]
+    },
+    "Conn_01x04": {
+      "symbol": "Connector:Conn_01x04",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+      "description": "4Pin 连接器（排针）",
+      "class": "connector",
+      "pins": [
+        {
+          "num": 1,
+          "name": "1",
+          "func": "passive"
+        },
+        {
+          "num": 2,
+          "name": "2",
+          "func": "passive"
+        },
+        {
+          "num": 3,
+          "name": "3",
+          "func": "passive"
+        },
+        {
+          "num": 4,
+          "name": "4",
+          "func": "passive"
+        }
+      ]
     }
   },
   "default_footprint_by_class": {

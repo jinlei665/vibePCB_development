@@ -61,6 +61,42 @@ cd frontend && npm run electron:dev
 
 打开应用后：输入需求（如"做一个ESP32温控器：DS18B20测温，MOSFET控制加热片，OLED显示温度，WiFi上报MQTT"）→ 点"开始生成" → 观察六阶段进度 → 查看/下载产物。
 
+## Web 在线部署模式（免 Electron）
+
+前端 API 基址**可配置**，默认同源相对路径——这意味着可以脱离 Electron 桌面壳，把前端构建产物当普通静态站点部署，与后端同域（或经反向代理同源）即可在线使用。
+
+### 前端 API 基址的三种配置方式
+
+| 方式 | 写法 | 适用 |
+|-|-|-|
+| 同源相对路径（默认） | 不做任何配置，`npm run build` | Web 在线部署：前后端同域/反代 |
+| 构建参数注入 | `VITE_API_BASE=http://host:8710 npx vite build`，或 `npm run build:desktop`（读 `frontend/.env.desktop`） | Electron 桌面壳（file:// 加载，必须绝对地址）、前后端分域 |
+| 运行时注入 | 在 `index.html` 加 `<script>window.__VIBEPCB_API_BASE__='http://host:8710'</script>` | 同一份静态产物指向不同后端（优先级低于构建参数） |
+
+### 在线部署步骤（同源反代示例，nginx）
+
+```bash
+# 1. 构建前端（同源模式，产物在 frontend/dist/）
+cd frontend && npm run build
+
+# 2. 启动后端（0.0.0.0 才能被反代/外网访问；密钥走环境变量）
+DEEPSEEK_API_KEY=sk-xxxx ../.venv/bin/python -m uvicorn app.main:app \
+  --host 0.0.0.0 --port 8710 --app-dir backend
+
+# 3. nginx 把 / 走静态产物、/api 转发后端（关键：同源，前端用相对路径即可）
+```
+
+```nginx
+server {
+  listen 80;
+  root /path/to/vibepcb/frontend/dist;
+  location / { try_files $uri /index.html; }
+  location /api/ { proxy_pass http://127.0.0.1:8710; }
+}
+```
+
+后端 CORS 为 `allow_origins=["*"]`，因此分域直连（`VITE_API_BASE` 指向后端地址）同样可用；同源反代是推荐姿势，可避免跨域与混合内容问题。
+
 ## 降级模式说明
 
 | 环境 | 行为 | 响应标记 |

@@ -181,9 +181,10 @@ def _export_simulated(board_path: Path, out_dir: Path) -> list:
                     definition = f"C,{max(sx, sy):.3f}"
                 writers[pl].flash(px, py, key, definition)
                 flash_count += 1
-            # 钻孔
-            if pad.drill and getattr(pad.drill, "size", 0) and pad.drill.size > 0:
-                drill_points.append((px, py, pad.drill.size))
+            # 钻孔（kiutils DrillDefinition 的孔径字段是 diameter）
+            drill_d = getattr(pad.drill, "diameter", None) or getattr(pad.drill, "size", 0)
+            if pad.drill and drill_d and drill_d > 0:
+                drill_points.append((px, py, drill_d))
 
     out_files = []
     for layer, writer in writers.items():

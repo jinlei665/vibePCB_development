@@ -24,7 +24,7 @@ class Settings:
     deepseek_base_url: str = field(default_factory=lambda: _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     deepseek_model: str = field(default_factory=lambda: _env("DEEPSEEK_MODEL", "deepseek-flash"))
     deepseek_fallback_model: str = field(default_factory=lambda: _env("DEEPSEEK_FALLBACK_MODEL", "deepseek-v4-pro"))
-    deepseek_timeout_s: float = field(default_factory=lambda: float(_env("DEEPSEEK_TIMEOUT_S", "30")))
+    deepseek_timeout_s: float = field(default_factory=lambda: float(_env("DEEPSEEK_TIMEOUT_S", "60")))
     deepseek_retries: int = 2
 
     # VibePCB

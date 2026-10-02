@@ -10,3 +10,6 @@ out/
 *.log
 .env
 ~/.vibepcb/
+skidl_REPL*
+threading*
+dbg_sel*
