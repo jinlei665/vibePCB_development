@@ -12,6 +12,11 @@ from ..core.deepseek_client import DeepSeekError, deepseek_client
 from ..core.workspace import ProjectWorkspace
 from ..models.schemas import RequirementSpec
 
+try:  # pydantic v2 / v1 兼容
+    from pydantic import ValidationError
+except ImportError:  # pragma: no cover
+    ValidationError = ()  # type: ignore[assignment]
+
 logger = logging.getLogger("vibepcb.parser")
 
 _SYSTEM_PROMPT = (
@@ -115,7 +120,8 @@ def run_parse(ws: ProjectWorkspace, prompt: str) -> dict[str, Any]:
             ])
             spec = _coerce_spec(obj)
             engine, degraded = "deepseek", False
-        except DeepSeekError as exc:
+        # schema 形状错误（合法 JSON 但字段类型错）同样走降级而非 500（质检 P2）
+        except (DeepSeekError, ValidationError, TypeError, AttributeError, KeyError) as exc:
             logger.warning("parse deepseek failed, fallback to rule-based: %s", exc)
             spec = _rule_based_spec(prompt)
             engine, degraded = "rule-based", True
@@ -125,9 +131,12 @@ def run_parse(ws: ProjectWorkspace, prompt: str) -> dict[str, Any]:
 
     # spec 落盘供后续阶段消费
     import json
-    (ws.root / "in" / "spec.json").write_text(
-        spec.model_dump_json(indent=2), encoding="utf-8"
-    )
+    spec_file = ws.root / "in" / "spec.json"
+    old_spec = spec_file.read_text(encoding="utf-8") if spec_file.exists() else None
+    spec_file.write_text(spec.model_dump_json(indent=2), encoding="utf-8")
+    # spec 变化 → 级联重置下游已完成阶段，避免新需求 + 旧产物错配（质检 P2）
+    if old_spec is not None and old_spec != spec_file.read_text(encoding="utf-8"):
+        ws.reset_stages_after_parse()
     return {
         "stage": "parse", "engine": engine, "degraded": degraded,
         "spec": spec.model_dump(),

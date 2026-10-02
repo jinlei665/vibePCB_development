@@ -117,6 +117,26 @@ class ProjectWorkspace:
             self._state["overall"] = "failed"
             self.save()
 
+    def reset_stages_after_parse(self) -> None:
+        """parse 产物变化后级联重置下游阶段（质检 P2）。
+
+        否则带新 prompt 重跑 parse 时，components 等已完成阶段命中
+        「done 即跳过」，返回新需求 + 旧产物的错配结果。
+        """
+        with self.lock:
+            changed = False
+            for s in STAGE_ORDER:
+                if s != "parse" and self.stage(s).get("status") != "pending":
+                    self._state["stages"][s] = {"status": "pending"}
+                    changed = True
+            if changed:
+                self._state["overall"] = "running"
+                self._state["current_stage"] = next(
+                    (s for s in STAGE_ORDER if self.stage(s).get("status") not in ("done",)),
+                    None,
+                )
+                self.save()
+
     # ---------- 产物 ----------
 
     def register_artifact(self, rel_path: str, kind: str) -> dict[str, Any]:
@@ -135,7 +155,8 @@ class ProjectWorkspace:
 
     def abs(self, rel_path: str) -> Path:
         p = (self.root / rel_path).resolve()
-        if not str(p).startswith(str(self.root.resolve())):
+        # is_relative_to 防前缀绕过：startswith 会放过 ../p_xxx 兄弟目录（质检 P2）
+        if not p.is_relative_to(self.root.resolve()):
             raise WorkspaceError(f"illegal artifact path: {rel_path}")
         return p
 
@@ -167,9 +188,10 @@ def _workspace_lock(project_id: str) -> threading.Lock:
 def create_project(name: str, prompt: str) -> ProjectWorkspace:
     projects_dir = settings.projects_dir
     projects_dir.mkdir(parents=True, exist_ok=True)
-    project_id = "p_" + secrets.token_hex(3)
+    # 项目 ID 随机空间 ≥ 2^64（质检 P1：token_hex(3) 仅 6 位 hex 可枚举）
+    project_id = "p_" + secrets.token_hex(8)
     while (projects_dir / project_id).exists():
-        project_id = "p_" + secrets.token_hex(3)
+        project_id = "p_" + secrets.token_hex(8)
     root = projects_dir / project_id
     for sub in ("in", "out", "firmware", "gerber"):
         (root / sub).mkdir(parents=True)

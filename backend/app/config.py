@@ -17,6 +17,10 @@ def _env(key: str, default: str = "") -> str:
     return val if val else default
 
 
+def _parse_origins(raw: str) -> list:
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 @dataclass
 class Settings:
     # DeepSeek
@@ -34,6 +38,16 @@ class Settings:
         default_factory=lambda: Path(_env("VIBEPCB_DATA_DIR", str(Path.home() / ".vibepcb"))).expanduser()
     )
     stage_timeout_s: float = 300.0  # 文档：单阶段执行上限 300 秒
+
+    # 公网部署防护（P1）：VIBEPCB_API_TOKEN 非空时所有 /api 路由（/api/health 除外）
+    # 要求 Bearer 或 X-API-Token 凭据；为空保持本机模式（Electron/本地开发不受影响）
+    api_token: str = field(default_factory=lambda: _env("VIBEPCB_API_TOKEN", ""))
+    # CORS 收敛（P1）：默认仅放行本机 vite dev 与 Electron file://（Origin: null）；
+    # 公网部署用 VIBEPCB_CORS_ORIGINS 显式配置逗号分隔 origin 列表（此时应去掉 null）
+    cors_origins: list = field(default_factory=lambda: _parse_origins(
+        _env("VIBEPCB_CORS_ORIGINS",
+             "http://localhost:5173,http://127.0.0.1:5173,null")
+    ))
 
     @property
     def deepseek_configured(self) -> bool:

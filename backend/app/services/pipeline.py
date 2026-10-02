@@ -30,6 +30,16 @@ def _get_lock(project_id: str) -> threading.Lock:
         return _project_locks.setdefault(project_id, threading.Lock())
 
 
+def try_acquire(project_id: str) -> threading.Lock | None:
+    """尝试获取项目运行锁；被占用返回 None。
+
+    供 pipeline 与单阶段端点共用——单阶段执行同样纳入互斥锁，
+    避免与 pipeline 并发跑同项目时状态机交错（质检 P2）。
+    """
+    lock = _get_lock(project_id)
+    return lock if lock.acquire(blocking=False) else None
+
+
 def _completed(ws: ProjectWorkspace) -> set:
     return {s for s, st in ws.state.get("stages", {}).items() if st.get("status") == "done"}
 
@@ -90,8 +100,8 @@ def run_stages(ws: ProjectWorkspace, stages: list, user_input: str | None = None
         if s not in STAGE_ORDER:
             raise StageError("STAGE_PREREQ_MISSING", s, f"未知阶段 {s}")
 
-    lock = _get_lock(ws.project_id)
-    if not lock.acquire(blocking=False):
+    lock = try_acquire(ws.project_id)
+    if lock is None:
         raise StageError("INTERNAL", "pipeline", "该项目的流水线正在运行中")
 
     prompt = user_input or ws.state.get("prompt", "")

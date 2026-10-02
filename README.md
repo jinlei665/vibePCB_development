@@ -80,7 +80,8 @@ cd frontend && npm run electron:dev
 cd frontend && npm run build
 
 # 2. 启动后端（0.0.0.0 才能被反代/外网访问；密钥走环境变量）
-DEEPSEEK_API_KEY=sk-xxxx ../.venv/bin/python -m uvicorn app.main:app \
+DEEPSEEK_API_KEY=sk-xxxx VIBEPCB_API_TOKEN=<随机长token> \
+  ../.venv/bin/python -m uvicorn app.main:app \
   --host 0.0.0.0 --port 8710 --app-dir backend
 
 # 3. nginx 把 / 走静态产物、/api 转发后端（关键：同源，前端用相对路径即可）
@@ -91,11 +92,26 @@ server {
   listen 80;
   root /path/to/vibepcb/frontend/dist;
   location / { try_files $uri /index.html; }
-  location /api/ { proxy_pass http://127.0.0.1:8710; }
+  location /api/ {
+    # 推荐姿势：token 在反代层注入，浏览器端零配置
+    proxy_set_header X-API-Token <与后端一致的token>;
+    proxy_pass http://127.0.0.1:8710;
+  }
 }
 ```
 
-后端 CORS 为 `allow_origins=["*"]`，因此分域直连（`VITE_API_BASE` 指向后端地址）同样可用；同源反代是推荐姿势，可避免跨域与混合内容问题。
+### 公网部署安全配置（重要）
+
+| 环境变量 | 作用 | 说明 |
+|-|-|-|
+| `VIBEPCB_API_TOKEN` | API 鉴权 | 非空时所有 `/api` 路由（`/api/health` 除外）要求 `Authorization: Bearer <token>` 或 `X-API-Token: <token>` 头；不设置则为本机模式（Electron/本地开发不受影响）。**公网部署必须设置**，否则任何人可无凭据创建项目烧你的 DeepSeek 配额 |
+| `VIBEPCB_CORS_ORIGINS` | CORS 白名单 | 逗号分隔 origin 列表。默认 `http://localhost:5173,http://127.0.0.1:5173,null`（本机 vite dev + Electron file://）；同源反代部署天然无跨域无需改；分域部署时显式配前端 origin |
+
+浏览器直连后端（分域）且后端启用了 token 时，在前端页面控制台执行一次
+`localStorage.setItem('vibepcb_token','<token>')` 后刷新即可（token 保存在浏览器本地）。
+推荐仍是同源反代 + 反代层注入 `X-API-Token`，浏览器端零配置。
+
+后端 CORS 已按上述环境变量收敛（不再通配 `*`）；分域直连（`VITE_API_BASE` 指向后端地址）在配置好 CORS 后同样可用。
 
 ## 降级模式说明
 

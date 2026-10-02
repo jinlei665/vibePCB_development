@@ -57,8 +57,27 @@ def run_stage(project_id: str, stage: str, body: dict | None = None):
     except WorkspaceError:
         raise HTTPException(404, detail={"error": {"code": "NOT_FOUND", "stage": stage,
                                                    "message": f"项目不存在: {project_id}"}})
+    # 前置阶段检查（质检 P2）：此前缺前置时服务内 FileNotFoundError → 500，
+    # 契约应为 404 STAGE_PREREQ_MISSING，与 pipeline 端点一致
+    from ..core.workspace import STAGE_PREREQS
+    done = {s for s, st in ws.state.get("stages", {}).items() if st.get("status") == "done"}
+    missing = [p for p in STAGE_PREREQS.get(stage, []) if p not in done]
+    if missing:
+        raise HTTPException(404, detail={"error": {
+            "code": "STAGE_PREREQ_MISSING", "stage": stage,
+            "message": f"缺少前置阶段: {', '.join(missing)}",
+        }})
+    # 纳入项目互斥锁（质检 P2）：单阶段与 pipeline 并发跑同项目会交错写状态机
+    lock = pipeline_svc.try_acquire(ws.project_id)
+    if lock is None:
+        raise HTTPException(409, detail={"error": {
+            "code": "PROJECT_BUSY", "stage": stage,
+            "message": "该项目的流水线正在运行中",
+        }})
     user_input = body.get("prompt") or ws.state.get("prompt", "")
     try:
         return pipeline_svc.run_stage_once(ws, stage, user_input)
     except StageError as exc:
         raise _error_response(exc)
+    finally:
+        lock.release()

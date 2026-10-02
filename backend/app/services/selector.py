@@ -165,6 +165,13 @@ def run_components(ws: ProjectWorkspace, spec: dict[str, Any], prompt: str) -> d
                 {"role": "user", "content": json.dumps(spec, ensure_ascii=False)},
             ])
             comps = obj.get("components") or []
+            # schema 形状校验（质检 P2）：合法 JSON 但 components 非列表/元素非
+            # dict 时，_validate_components 会 AttributeError 逃出降级链 → 500
+            if not isinstance(comps, list) or not all(isinstance(c, dict) for c in comps):
+                raise DeepSeekError(
+                    "DEEPSEEK_UNAVAILABLE",
+                    f"components 输出形状错误: {type(comps).__name__}",
+                )
             engine, degraded = "deepseek+footprint_map", False
         except DeepSeekError as exc:
             logger.warning("components deepseek failed, fallback to preset: %s", exc)

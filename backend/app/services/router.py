@@ -112,17 +112,22 @@ def route_net(net_name: str, pads: List[Tuple[float, float]]) -> RoutedNet:
             rn.segments.append(RouteSegment((ax, ay), (bx, ay), "F.Cu", w, net_name))
         else:
             mid_x = _q(bx + offset)
-            mid_y = _q(ay + offset)
-            # 横向 F.Cu：a -> (mid_x, ay)
-            rn.segments.append(RouteSegment((ax, ay), (mid_x, ay), "F.Cu", w, net_name))
-            # 过孔 1
-            rn.vias.append(RouteVia((mid_x, ay), VIA_SIZE, VIA_DRILL))
-            # 纵向 B.Cu：(mid_x, ay) -> (mid_x, by)
-            rn.segments.append(RouteSegment((mid_x, ay), (mid_x, by), "B.Cu", w, net_name))
-            # 过孔 2（回到 F.Cu 焊盘层）
-            rn.vias.append(RouteVia((mid_x, by), VIA_SIZE, VIA_DRILL))
-            # 横向 F.Cu：(mid_x, by) -> b
-            rn.segments.append(RouteSegment((mid_x, by), (bx, by), "F.Cu", w, net_name))
+            if mid_x == bx:
+                # 错层偏移归零（idx%5==2）：单层 L 形。避免零长度末段
+                # (bx,by)→(bx,by) 与钻在焊盘 b 中心的过孔（质检 P2 实跑复现）
+                if (ax, ay) != (bx, ay):
+                    rn.segments.append(RouteSegment((ax, ay), (bx, ay), "F.Cu", w, net_name))
+                if (bx, ay) != (bx, by):
+                    rn.segments.append(RouteSegment((bx, ay), (bx, by), "F.Cu", w, net_name))
+            else:
+                # 两层三段：横 F.Cu → 孔1 → 纵 B.Cu → 孔2 → 横 F.Cu
+                if (ax, ay) != (mid_x, ay):
+                    rn.segments.append(RouteSegment((ax, ay), (mid_x, ay), "F.Cu", w, net_name))
+                rn.vias.append(RouteVia((mid_x, ay), VIA_SIZE, VIA_DRILL))
+                rn.segments.append(RouteSegment((mid_x, ay), (mid_x, by), "B.Cu", w, net_name))
+                rn.vias.append(RouteVia((mid_x, by), VIA_SIZE, VIA_DRILL))
+                # mid_x != bx 保证此段非零长，且孔2 不落在焊盘 b 中心
+                rn.segments.append(RouteSegment((mid_x, by), (bx, by), "F.Cu", w, net_name))
     return rn
 
 

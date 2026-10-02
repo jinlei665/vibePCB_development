@@ -8,9 +8,16 @@
 //   优先级低于构建参数，适合同一份静态产物指向不同后端
 const BASE = (import.meta.env.VITE_API_BASE ?? '').trim()
   || (typeof window !== 'undefined' && window.__VIBEPCB_API_BASE__ ? String(window.__VIBEPCB_API_BASE__).trim() : '');
+// API Token（后端启用 VIBEPCB_API_TOKEN 时需要）：localStorage 或运行时注入。
+// 同源反代部署推荐在反代层注入 X-API-Token 头，浏览器无需配置。
+const API_TOKEN = (typeof window !== 'undefined'
+  && (localStorage.getItem('vibepcb_token') || window.__VIBEPCB_API_TOKEN__)) || '';
+function authHeaders() {
+  return API_TOKEN ? { 'X-API-Token': API_TOKEN } : {};
+}
 async function req(path, opts = {}) {
   const r = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' }, ...opts,
+    headers: { 'Content-Type': 'application/json', ...authHeaders() }, ...opts,
   });
   if (!r.ok) {
     let detail = {};
@@ -26,6 +33,6 @@ export const api = {
   getProject: (id) => req(`/api/projects/${id}`),
   runPipeline: (id) => req(`/api/projects/${id}/pipeline`, { method: 'POST', body: JSON.stringify({ stages: ['all'] }) }),
   artifacts: (id, stage) => req(`/api/projects/${id}/artifacts/${stage}`),
-  artifactText: (id, stage, path) => fetch(`${BASE}/api/projects/${id}/artifacts/${stage}?path=${encodeURIComponent(path)}`).then(r => r.text()),
+  artifactText: (id, stage, path) => fetch(`${BASE}/api/projects/${id}/artifacts/${stage}?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then(r => r.text()),
   downloadUrl: (id, stage, path) => `${BASE}/api/projects/${id}/artifacts/${stage}?path=${encodeURIComponent(path)}&download=1`,
 };

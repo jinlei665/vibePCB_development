@@ -176,7 +176,12 @@ def _export_simulated(board_path: Path, out_dir: Path) -> list:
                 elif pad.shape == "oval":
                     key = f"o{sx}x{sy}"
                     definition = f"O,{sx:.3f}X{sy:.3f}"
-                else:  # circle / roundrect 近似为圆
+                elif pad.shape == "roundrect":
+                    # 矩形近似（质检 P3）：此前取 max 边做圆，窄边铜箔外扩
+                    # (max-min)/2，密集焊盘间隙收缩有短路边际
+                    key = f"r{sx}x{sy}"
+                    definition = f"R,{sx:.3f}X{sy:.3f}"
+                else:  # circle 近似为圆
                     key = f"c{max(sx, sy)}"
                     definition = f"C,{max(sx, sy):.3f}"
                 writers[pl].flash(px, py, key, definition)

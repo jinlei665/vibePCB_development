@@ -20,11 +20,31 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="VibePCB API", version=APP_VERSION)
 
-# Electron 前端（开发模式 vite 默认 5173）跨域放行
+# CORS 收敛（质检 P1）：默认仅本机 vite dev + Electron file://（Origin: null）；
+# 公网部署经 VIBEPCB_CORS_ORIGINS 显式配置 origin 列表（同源反代部署天然无跨域）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"],
 )
+
+
+# API 鉴权（质检 P1）：VIBEPCB_API_TOKEN 非空时，除 /api/health 外所有 /api 路由
+# 要求凭据（Authorization: Bearer <token> 或 X-API-Token: <token>）。
+# 未配置时零开销直通——本机 Electron/开发模式体验不变。
+@app.middleware("http")
+async def api_token_guard(request: Request, call_next):
+    if settings.api_token:
+        path = request.url.path
+        if path.startswith("/api") and path != "/api/health":
+            auth = request.headers.get("authorization", "")
+            token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            token = token or request.headers.get("x-api-token", "").strip()
+            if token != settings.api_token:
+                return JSONResponse(status_code=401, content={"error": {
+                    "code": "UNAUTHORIZED", "stage": "-",
+                    "message": "缺少或无效的 API Token（需 Authorization: Bearer 或 X-API-Token 头）",
+                }})
+    return await call_next(request)
 
 app.include_router(projects.router)
 app.include_router(stages.router)
