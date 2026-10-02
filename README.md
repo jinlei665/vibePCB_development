@@ -1,4 +1,4 @@
-# VibePCB
+# VibePCB（未实现）
 
 自然语言 → 需求解析 → 原理图/网表 → PCB 布局布线 → ESP32 固件 → Gerber 制造文件，一键生成的桌面应用 MVP。
 
