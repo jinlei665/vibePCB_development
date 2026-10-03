@@ -18,4 +18,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // antd 体积摆在那（整包约 1.1MB / gzip 362KB），桌面壳从本地磁盘加载无所谓，
+    // 但把 react 与 antd 拆成独立 chunk 能让 Web 部署时缓存更有效。
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          antd: ['antd', '@ant-design/icons'],
+        },
+      },
+    },
+  },
 });

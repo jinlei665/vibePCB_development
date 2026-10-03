@@ -36,6 +36,25 @@
 | D12 | `requirements.txt` 含 UTF-8 中文注释；Windows 上 locale 非 UTF-8（本机 GBK）的 Python 跑 `pip install -r` 报 `UnicodeDecodeError` | README 里的安装命令在 stock Windows 上是坏的 |
 | D13 | `vite.config.js` 没有 `/api` 开发代理，而 `client.js` 默认用同源相对路径 | `npm run dev` + 浏览器时请求打到 Vite 自己身上并 404，浏览器工作流实际不可用（现已加代理） |
 
+## 界面
+
+用 [Ant Design 5](https://ant.design/) 重做的应用壳：左侧栏（新建 / 流水线 / 产物 + 最近项目）、
+顶栏（引擎状态徽标 + 浅深色切换）、主内容区。浅色与深色共用同一组设计令牌
+（`frontend/src/theme.js`），一键切换并记在 localStorage。
+
+| 新建项目 | 深色主题 |
+|-|-|
+| ![新建项目](docs/ui/prompt-light.png) | ![深色主题](docs/ui/prompt-dark.png) |
+
+| 流水线（步骤条 + 实时预览） | PCB 编辑器 |
+|-|-|
+| ![流水线](docs/ui/pipeline.png) | ![PCB 编辑器](docs/ui/board-editor.png) |
+
+器件 / 封装库浏览与换封装：![器件库](docs/ui/library.png)
+
+> 截图由 `scripts/` 之外的一次性 Electron 截图脚本生成（无头加载前端、抓控制台错误并逐页截图），
+> 所以界面改动可以像后端一样有客观证据。
+
 ## CAD 化路线图（进行中）
 
 目标：让 VibePCB 具备「实时看见 + 手动调整」的 CAD 式体验。定位是**双轨**——本应用负责

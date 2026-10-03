@@ -34,6 +34,7 @@ async function req(path, opts = {}) {
 export const api = {
   health: () => req('/api/health'),
   capabilities: () => req('/api/capabilities'),
+  listProjects: () => req('/api/projects'),
   createProject: (name, prompt) => req('/api/projects', { method: 'POST', body: JSON.stringify({ name, prompt }) }),
   getProject: (id) => req(`/api/projects/${id}`),
   runPipeline: (id) => req(`/api/projects/${id}/pipeline`, { method: 'POST', body: JSON.stringify({ stages: ['all'] }) }),
