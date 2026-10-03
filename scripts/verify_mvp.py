@@ -107,10 +107,14 @@ def main() -> int:
     check("① 关键词解析命中（OLED 显示）",
           any("SSD1306" in (d.get("part") or "") for d in spec.get("displays", [])),
           json.dumps(spec.get("displays"), ensure_ascii=True)[:100])
-    check("① 关键词解析命中（MOSFET/加热执行器）",
-          any(a.get("type") in ("heater_plate", "fan") or "AO3400" in str(a)
-              for a in spec.get("actuators", [])),
-          json.dumps(spec.get("actuators"), ensure_ascii=True)[:100])
+    # 断言不能绑死规则引擎的词汇：DeepSeek 会给出更丰富的结构
+    # （实测 type="heater" / part="IRLZ44N"，而规则引擎固定 heater_plate/AO3400A）。
+    acts = spec.get("actuators", [])
+    act_blob = json.dumps(acts, ensure_ascii=True).lower()
+    check("① 解析出加热/受控负载执行器",
+          any(k in act_blob for k in
+              ("heater", "heat", "fan", "motor", "relay", "mosfet", "nmos", "ao3400", "irlz")),
+          json.dumps(acts, ensure_ascii=True)[:120])
     if settings.deepseek_configured:
         check("① 已配 Key 时走真实 DeepSeek 链路",
               parse.get("engine") == "deepseek" and parse.get("degraded") is False,
