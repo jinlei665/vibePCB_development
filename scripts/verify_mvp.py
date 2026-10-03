@@ -177,9 +177,12 @@ def main() -> int:
     check("④ PCB 有走线（不是无布线的裸板）",
           (pcb_res.get("routing", {}) or {}).get("segments", 0) > 0,
           json.dumps(pcb_res.get("routing", {}), ensure_ascii=True)[:140])
-    if pcb_res.get("degraded"):
-        check("④ 降级时给出可读原因（degraded_reason）",
-              bool(pcb_res.get("degraded_reason")), str(pcb_res.get("degraded_reason"))[:100])
+    # 无论走哪个引擎都登记一条：降级必须给出可读原因，真实引擎必须标 degraded=false
+    check("④ pcb 引擎与 degraded 标记自洽（降级须有原因，真实引擎为 false）",
+          bool(pcb_res.get("degraded_reason")) if pcb_res.get("degraded")
+          else pcb_res.get("degraded") is False,
+          f"engine={pcb_res.get('engine')} degraded={pcb_res.get('degraded')} "
+          f"reason={str(pcb_res.get('degraded_reason'))[:80]}")
 
     ger = stages["gerber"]
     check("④ gerber 阶段完成", ger.get("status") == "done",
@@ -188,6 +191,14 @@ def main() -> int:
     for want in ("project-F_Cu.gbr", "project-B_Cu.gbr", "project-Edge_Cuts.gbr",
                  "project.drl", "gerbers.zip"):
         check(f"④ 产出 {want}", want in ger_files, f"files={ger_files}")
+
+    # D10 回归护栏：kicad-cli 真实导出必须真的产阻焊/丝印/板框层。历史上曾因把 -o 当
+    # 文件名模板（KiCad 10 的 -o/--output 是**目录**）而「报告成功却零 Gerber」。
+    ger_engine = (ger.get("result", {}) or {}).get("engine") or ger.get("engine")
+    if ger_engine == "kicad-cli":
+        for want in ("F_Mask", "B_Mask", "F_Silkscreen", "B_Silkscreen", "Edge_Cuts"):
+            check(f"④ kicad-cli 真实导出含 {want} 层",
+                  any(want in f for f in ger_files), f"files={ger_files}")
     zip_resp = c.get(f"/api/projects/{pid}/artifacts/gerber",
                      params={"path": "gerber/gerbers.zip", "download": 1})
     check("④ gerbers.zip 可下载", zip_resp.status_code == 200 and len(zip_resp.content) > 0,

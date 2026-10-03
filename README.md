@@ -14,10 +14,11 @@
 |-|-|
 | 六阶段流水线（无 KiCad、无 API Key 的降级路径） | ✅ `overall=done`，约 2–3 秒跑完 |
 | 回归脚本 `scripts/verify_fixes.py` | ✅ 29/29 通过（退出码 0） |
-| MVP 五步验收 `scripts/verify_mvp.py` | ✅ 35/35 通过（退出码 0） |
+| MVP 五步验收 `scripts/verify_mvp.py` | ✅ 40/40 通过（退出码 0） |
 | 中文需求端到端编码 | ✅ UTF-8 无损（`prompt.txt` 与 spec 逐字一致，关键词命中正常） |
-| DeepSeek 真实 AI 链路 | ⏳ 需配置 `DEEPSEEK_API_KEY` |
-| KiCad 真实引擎（pcbnew / kicad-cli） | ⏳ 需本机安装 KiCad 并让 venv 能 `import pcbnew` |
+| DeepSeek 真实 AI 链路 | ✅ parse / components / firmware 均实测 `engine=deepseek`、`degraded=false` |
+| KiCad 真实 PCB 引擎（pcbnew） | ✅ 实测 `engine=pcbnew`、`degraded=false`（20 器件、112 走线、66 过孔、DRC 零错误） |
+| KiCad 真实 Gerber（kicad-cli） | ✅ 实测 7 层 `.gbr`（含 Edge.Cuts）+ `.drl` + `.gbrjob` |
 
 ### 已修复的关键缺陷
 
@@ -30,6 +31,9 @@
 | D4 | 真实引擎只调 kinet2pcb 做「网表→摆放」，返回的 segments/vias 是 0 占位 | 真实引擎下产出无走线的裸板 |
 | D5 | Electron 壳 spawn 系统 `python`（本机指向 Anaconda，没有 fastapi/skidl），与 `start.ps1` 建的 `.venv` 不一致 | 单独跑 `npm run electron:dev` 后端起不来；`start.ps1` 会起两个后端抢 8710 |
 | D6 | `vite.config.js` 缺 `base: './'`；`package.json` 无 electron-builder 配置 | Electron 以 `file://` 加载 dist 时资源 404 → 白屏 |
+| **D10** | `gerber.py` 把 `-o` 当文件名模板传 `%f-%i.gbr`，而 KiCad 10 的 `-o` 是**目录** → 建了个同名目录，`glob("*.gbr")` 又恰好把它匹配上 | **「报告成功却零 Gerber」，静默空结果，直接打样会出事** |
+| D11 | `basic_drc` 用 kiutils 回读板文件，而 kiutils 1.4.8 无法解析 KiCad 10 的板格式（`Net.from_sexpr` 对 `(net <code>)` 抛 `IndexError`） | 真实引擎下 pcb 阶段 500（已按引擎选择回读方式并兜底） |
+| D12 | `requirements.txt` 含 UTF-8 中文注释；Windows 上 locale 非 UTF-8（本机 GBK）的 Python 跑 `pip install -r` 报 `UnicodeDecodeError` | README 里的安装命令在 stock Windows 上是坏的 |
 
 ## 快速开始
 
@@ -141,33 +145,69 @@ server {
 ## KiCad 真实引擎（可选，推荐）
 
 不装 KiCad 也能跑完整流程（PCB 走内置模拟引擎 + 自研 RS-274X Gerber 写入器）。
-要启用**真实** pcbnew 布局布线与 kicad-cli Gerber 导出，需要注意一点：
-`pcbnew` 是 KiCad 自带的 CPython 扩展，**其 ABI 与 Python 小版本绑定**，所以 venv 的
-Python 版本必须与 KiCad 自带解释器一致。
+装上 KiCad 10 后，两个阶段会切到真实链路：
+
+| 阶段 | 真实引擎 | 产物 |
+|-|-|-|
+| `pcb` | `pcbnew` | pcbnew 原生 API：`FootprintLoad` 摆放 + 曼哈顿自动布线 + `SaveBoard` |
+| `gerber` | `kicad-cli` | 7 层 Gerber（F/B Cu、F/B Mask、F/B SilkS、Edge.Cuts）+ Excellon 钻孔 + `.gbrjob` |
+
+### 关键：venv 必须用 KiCad 自带的 Python 创建
+
+`pcbnew` 是 KiCad 自带的 CPython 扩展，不在 PyPI 上。**仅仅让 Python 小版本相同是不够的
+——MSVC 工具链也必须一致。** 本机实测：系统 Python 是 Anaconda 的 `MSC v.1916`，KiCad 自带
+Python 是 `MSC v.1944`，两者都是 3.11.5，但用 Anaconda 建的 venv 里 `import pcbnew` 报：
+
+```
+ImportError: DLL load failed while importing _pcbnew: 动态链接库(DLL)初始化例程失败。
+```
+
+所以请这样建 venv：
 
 ```powershell
-# 1. 安装 KiCad 10.0.x（或从 https://downloads.kicad.org/kicad/windows/explore/stable 下载）
+# 1. 安装 KiCad 10.0.x
+#    官方安装包（推荐，浏览器/下载工具可断点续传）：
+#    https://downloads.kicad.org/kicad/windows/explore/stable
 winget install --id KiCad.KiCad -e
 
-# 2. 查看 KiCad 自带 Python 的小版本
-& "C:\Program Files\KiCad\10.0\bin\python.exe" --version
-
-# 3. 若与现有 .venv 不一致，用 KiCad 的 Python 重建 .venv（保证 pcbnew ABI 匹配）
+# 2. 用 KiCad 自带的 Python 建 venv（不要用系统 python）
 Remove-Item -Recurse -Force .venv
 & "C:\Program Files\KiCad\10.0\bin\python.exe" -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# 4. 让 venv 能 import pcbnew，并让 kicad-cli 进 PATH
+# 3. 写路径钩子（pcbnew 模块目录 + DLL 目录）并自检
+#    装在非默认位置时用 --root 指定，例如本机是 F:\_kicad_dl\KiCad\10.0
 .\.venv\Scripts\python.exe scripts\setup_kicad_path.py
 
-# 5. 自检
+# 4. 自检
 curl http://127.0.0.1:8710/api/capabilities
 ```
 
-判据：`pcb_engine_selected` 变为 `"pcbnew"`、`pcbnew_available` 与
-`kicad_cli_available` 均为 `true`，且 pcb 阶段响应 `engine == "pcbnew(kinet2pcb)"`、
-`degraded == false`。若真实引擎启动失败，响应里会带 `degraded_reason` 说明原因，
-不再静默回落。
+判据：`pcb_engine_selected` 为 `"pcbnew"`、`pcbnew_available` 与 `kicad_cli_available`
+均为 `true`；pcb 阶段 `engine == "pcbnew"` 且 `degraded == false`。
+
+`setup_kicad_path.py` 会比对 MSVC 工具链，不一致时直接给出重建 venv 的命令。由于 venv 基于
+KiCad 的 Python，`sys.base_prefix` 就是 KiCad 的 `bin`，因此
+`backend/app/core/engines.py` 能自动定位 `kicad-cli`，**无需改系统 PATH**。
+
+### 关于 kinet2pcb
+
+早期实现用 kinet2pcb 做「网表→板」，但它 1.1.4 的 Windows 发现逻辑写死了
+
+```python
+for kicad_version in ("9.0", "8.0", "7.0", "6.0", "5.0"):
+    ki_pth = os.path.join("C:\\Program Files\\KiCad", kicad_version)
+```
+
+既固定安装路径、又完全不认识 KiCad 10 → `import kinet2pcb` 必然抛
+"Could not find KiCad installation to import pcbnew module"。本仓库因此改为**直接用
+pcbnew 原生 API 建板**（`backend/app/services/pcb.py::_run_pcbnew`），不再依赖它；
+`requirements.txt` 仍保留 kinet2pcb，以免破坏 skidl 声明的依赖关系。
+
+> **多盘符提示**：若 `.venv` 与其基础 Python 不在同一盘符，skidl 会把 `script_dir`
+> 解析到基础解释器所在盘并触发跨盘符 `relpath` 异常。本仓库已在
+> `backend/app/services/schematic.py` 用 skidl 官方的 `track_abs_path=True` 规避
+> （见上文 D8），无需额外处理。
 
 > **多盘符提示**：若 `.venv` 与其基础 Python 不在同一盘符，skidl 会把 `script_dir`
 > 解析到基础解释器所在盘并触发跨盘符 `relpath` 异常。本仓库已在

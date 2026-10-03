@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import logging
-import subprocess
 from pathlib import Path
 
 from ..core.engines import engine_status, simulated_is_degraded, use_simulated
@@ -20,10 +19,6 @@ from ..core.errors import StageError
 from ..core.workspace import ProjectWorkspace
 
 logger = logging.getLogger(__name__)
-
-# 内置封装库快照目录（与 pcb_simulated.FP_LIBS_DIR 同一份）。
-# 传给 kinet2pcb -l，保证真实引擎也能解析出 netlist 里用到的 footprint。
-FP_LIBS_DIR = Path(__file__).resolve().parent.parent / "templates" / "footprint_libs"
 
 
 def run_pcb(ws: ProjectWorkspace) -> dict:
@@ -38,7 +33,7 @@ def run_pcb(ws: ProjectWorkspace) -> dict:
     if not use_sim and status.pcbnew_importable:
         try:
             stats = _run_pcbnew(netlist, ws.out_dir)
-            engine = "pcbnew(kinet2pcb)"
+            engine = "pcbnew"
             degraded = False
         except Exception as exc:  # 真实引擎失败自动回落
             logger.warning("pcbnew engine failed, falling back to simulated: %s", exc)
@@ -61,9 +56,7 @@ def run_pcb(ws: ProjectWorkspace) -> dict:
 
     ws.register_artifact("out/project.kicad_pcb", "pcb")
 
-    from . import pcb_simulated
-
-    drc = pcb_simulated.basic_drc(board_path, stats)
+    drc = _drc_for(engine, board_path, stats)
     drc["engine"] = engine
 
     return {
@@ -90,6 +83,85 @@ def run_pcb(ws: ProjectWorkspace) -> dict:
     }
 
 
+def _drc_summary(stats: dict) -> dict:
+    return {
+        "footprints": stats.get("components_placed", 0),
+        "nets": stats.get("nets", 0),
+        "segments": stats.get("segments", 0),
+        "vias": stats.get("vias", 0),
+    }
+
+
+def _drc_for(engine: str, board_path: Path, stats: dict) -> dict:
+    """DRC 摘要（质检 D11）。
+
+    真实引擎写出的板必须用 **pcbnew** 回读：kiutils 1.4.8 解析不了 KiCad 10 的板文件
+    格式——实测 `kiutils/items/common.py:543` 的 `Net.from_sexpr` 对 `(net <code>)`
+    这种不带网络名的写法直接 `IndexError: list index out of range`，会让整个 pcb 阶段
+    500。模拟引擎的板本来就是 kiutils 写的，继续用 kiutils 回读。
+
+    DRC 只是建议性信息，**任何异常都不应让阶段失败**，故两条路径都兜底。
+    """
+    try:
+        if engine == "pcbnew":
+            return _drc_with_pcbnew(board_path, stats)
+        from . import pcb_simulated
+
+        return pcb_simulated.basic_drc(board_path, stats)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("DRC 回读失败（engine=%s）: %s", engine, exc)
+        return {
+            "checks": [],
+            "errors": [],
+            "warnings": [{"type": "drc_unavailable", "detail": str(exc)[:200]}],
+            "summary": _drc_summary(stats),
+        }
+
+
+def _drc_with_pcbnew(board_path: Path, stats: dict) -> dict:
+    """用 pcbnew 回读真实引擎的板，做 MVP 级检查（网络覆盖 / 板框闭合）。"""
+    import pcbnew
+
+    board = pcbnew.LoadBoard(str(board_path))
+
+    routed: set = set()
+    track_count = via_count = 0
+    for t in board.GetTracks():
+        name = t.GetNetname()
+        if name:
+            routed.add(name)
+        # SWIG 绑定下 isinstance 不一定可靠，按类名区分走线/过孔
+        if type(t).__name__.upper().endswith("VIA"):
+            via_count += 1
+        else:
+            track_count += 1
+
+    net_names: set = set()
+    try:
+        for name in board.GetNetsByName().keys():
+            net_names.add(str(name))
+    except Exception:  # noqa: BLE001
+        pass
+
+    unrouted = sorted(n for n in net_names if n and n not in routed and n != "N/C")
+    edge = [d for d in board.GetDrawings() if d.GetLayer() == pcbnew.Edge_Cuts]
+    errors = []
+    if len(edge) != 4:
+        errors.append({"type": "edge_not_rect", "lines": len(edge)})
+
+    return {
+        "checks": ["net_coverage", "edge_closed"],
+        "errors": errors,
+        "warnings": [{"type": "net_unrouted", "net": n} for n in unrouted],
+        "summary": {
+            "footprints": len(list(board.GetFootprints())),
+            "nets": len([n for n in net_names if n]),
+            "segments": track_count or stats.get("segments", 0),
+            "vias": via_count or stats.get("vias", 0),
+        },
+    }
+
+
 def _run_simulated(netlist: Path, out_dir: Path) -> dict:
     from . import pcb_simulated
 
@@ -97,95 +169,113 @@ def _run_simulated(netlist: Path, out_dir: Path) -> dict:
 
 
 def _run_pcbnew(netlist: Path, out_dir: Path) -> dict:
-    """真实引擎：kinet2pcb 网表转板 + 补一轮曼哈顿布线。需要本机安装 KiCad。"""
-    import sys
+    """真实引擎（D4 重写）：用 pcbnew 原生 API 从网表建板，**不依赖 kinet2pcb**。
 
-    import kinet2pcb  # noqa: F401  顶层即校验 pcbnew 可用性
+    为什么弃用 kinet2pcb：它 1.1.4 的 Windows 发现逻辑写死了
 
-    board_out = out_dir / "project.kicad_pcb"
-    # 用 sys.executable 而不是写死的 "python3"（质检 D3）：Windows 上 python3 往往
-    # 是 Microsoft Store 的 0 字节别名占位（本机实测 size=0）或根本不存在，导致
-    # spawn 必然失败并被静默回落模拟引擎，装了 KiCad 也走不到真实链路。
-    # -w：允许覆盖上一轮留下的板文件（例如先跑过模拟引擎）。
-    # -l：指向内置封装快照，保证 netlist 里的 footprint 能被解析。
-    cmd = [
-        sys.executable, "-m", "kinet2pcb",
-        "-o", str(board_out),
-        "-w",
-        "-l", str(FP_LIBS_DIR),
-        str(netlist),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
-    if result.returncode != 0 or not board_out.exists():
-        raise RuntimeError(
-            f"kinet2pcb exited {result.returncode}: "
-            f"{(result.stderr or result.stdout)[-400:]}"
-        )
+        for kicad_version in ("9.0", "8.0", "7.0", "6.0", "5.0"):
+            ki_pth = os.path.join("C:\\Program Files\\KiCad", kicad_version)
 
-    # kinet2pcb 只负责「网表→摆放」，本身不布线（质检 D4）。这里复用模拟引擎用的
-    # 同一个 router.route_all()，把走线/过孔真正写回 .kicad_pcb，让两个引擎的
-    # 「自动布局布线」行为一致。布线失败不致命：板子仍可用，只是没走线。
-    try:
-        stats = _route_with_pcbnew(board_out)
-        stats["routed"] = True
-        stats["note"] = "pcbnew(kinet2pcb) 摆放 + 曼哈顿自动布线"
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("pcbnew auto-routing failed, board left un-routed: %s", exc)
-        stats = {
-            "components_placed": -1, "segments": 0, "vias": 0,
-            "total_track_mm": 0, "board_outline": {},
-            "routed": False, "routing_error": str(exc)[:300],
-            "note": "pcbnew(kinet2pcb) 仅完成摆放，自动布线未生效（见 routing_error）",
-        }
-    return stats
+    既固定安装路径、又完全不认识 KiCad 10，`import kinet2pcb` 直接抛
+    "Could not find KiCad installation to import pcbnew module"（本机 10.0.6 实测）。
+    既然 pcbnew 本身已可导入，直接用它建板更简单也更可控：
 
-
-def _route_with_pcbnew(board_path: Path) -> dict:
-    """读回 pcbnew 生成的板，按网络收集焊盘坐标，注入曼哈顿走线与过孔。"""
+    * 复用 pcb_simulated 的网表解析与分区布局 → 两个引擎布局语义一致；
+    * 封装用 pcbnew.FootprintLoad 从内置快照库加载 → 走 KiCad 自己的解析器；
+    * 走线/过孔复用同一个 router.route_all() → 布线语义一致；
+    * 由 pcbnew.SaveBoard 写出 → 保证是 KiCad 原生格式。
+    """
     import pcbnew
 
+    from . import pcb_simulated
     from . import router as router_mod
 
-    board = pcbnew.LoadBoard(str(board_path))
+    nl = pcb_simulated.parse_netlist(netlist)
+    positions = pcb_simulated.place_components(nl)
+
+    board = pcbnew.CreateEmptyBoard()
+    board_out = out_dir / "project.kicad_pcb"
 
     def _pt(x_mm: float, y_mm: float):
-        # KiCad 7+ 用 VECTOR2I；老版本是 wxPoint。都试一遍以保证兼容。
-        if hasattr(pcbnew, "VECTOR2I"):
-            return pcbnew.VECTOR2I(pcbnew.FromMM(x_mm), pcbnew.FromMM(y_mm))
-        return pcbnew.wxPoint(pcbnew.FromMM(x_mm), pcbnew.FromMM(y_mm))
+        return pcbnew.VECTOR2I(pcbnew.FromMM(x_mm), pcbnew.FromMM(y_mm))
 
-    net_pads: dict = {}
+    nets: dict = {}
+
+    def _net(name: str):
+        if name not in nets:
+            item = pcbnew.NETINFO_ITEM(board, name)
+            board.Add(item)
+            nets[name] = item
+        return nets[name]
+
+    # 节点索引：ref -> {pin: net_name}
+    ref_pin_net: dict = {}
+    for name, pn in nl.nets.items():
+        for node in pn.nodes:
+            ref_pin_net.setdefault(node.ref, {})[node.pin] = name
+
+    def _is_virtual(comp) -> bool:
+        # 电气标注件（PWR_FLAG）与虚拟 ref（#PWR…）不落板，与模拟引擎一致
+        return (pcb_simulated._fp_path(comp.footprint) is None
+                or "PWR_FLAG" in comp.footprint.upper()
+                or comp.ref.startswith("#"))
+
+    pad_coords: dict = {}
     placed = 0
-    for fp in board.GetFootprints():
-        placed += 1
+    skipped: list = []
+    for comp in nl.components:
+        if _is_virtual(comp):
+            skipped.append(comp.ref)
+            continue
+        fp_file = pcb_simulated._fp_path(comp.footprint)
+        fp = pcbnew.FootprintLoad(str(fp_file.parent), fp_file.stem)
+        if fp is None:
+            logger.warning("pcbnew: FootprintLoad failed for %s (%s)", comp.ref, comp.footprint)
+            skipped.append(comp.ref)
+            continue
+
+        x, y, rot = positions.get(comp.ref, (30.0, 30.0, 0.0))
+        fp.SetPosition(_pt(x, y))
+        if rot:
+            fp.SetOrientationDegrees(rot)
+        fp.SetReference(comp.ref)
+        if comp.value:
+            fp.SetValue(comp.value)
+        board.Add(fp)
+
         for pad in fp.Pads():
-            net = pad.GetNet()
-            if net is None:
+            num = pad.GetNumber()
+            net_name = ref_pin_net.get(comp.ref, {}).get(num)
+            if not net_name:
                 continue
-            name = net.GetNetname()
-            if not name:
-                continue
+            pad.SetNet(_net(net_name))
             pos = pad.GetPosition()
-            net_pads.setdefault(name, []).append(
+            pad_coords.setdefault(net_name, []).append(
                 (pcbnew.ToMM(pos.x), pcbnew.ToMM(pos.y))
             )
+        placed += 1
 
-    routed = router_mod.route_all(net_pads)
+    # 曼哈顿布线（与模拟引擎同一套算法，保证两个引擎行为一致）
+    routed = router_mod.route_all(pad_coords)
     seg_count = via_count = 0
     total_mm = 0.0
+    layer_cache: dict = {}
+
+    def _layer_id(name: str) -> int:
+        if name not in layer_cache:
+            layer_cache[name] = board.GetLayerID(name)
+        return layer_cache[name]
+
     for net_name, rn in routed.items():
-        netinfo = board.FindNet(net_name)
-        if netinfo is None:
-            continue
-        ncode = netinfo.GetNetCode() if hasattr(netinfo, "GetNetCode") else 0
+        code = _net(net_name).GetNetCode()
         for s in rn.segments:
-            track = pcbnew.PCB_TRACK(board)
-            track.SetStart(_pt(s.start[0], s.start[1]))
-            track.SetEnd(_pt(s.end[0], s.end[1]))
-            track.SetWidth(pcbnew.FromMM(s.width))
-            track.SetLayer(board.GetLayerID(s.layer))
-            track.SetNetCode(ncode)
-            board.Add(track)
+            t = pcbnew.PCB_TRACK(board)
+            t.SetStart(_pt(s.start[0], s.start[1]))
+            t.SetEnd(_pt(s.end[0], s.end[1]))
+            t.SetWidth(pcbnew.FromMM(s.width))
+            t.SetLayer(_layer_id(s.layer))
+            t.SetNetCode(code)
+            board.Add(t)
             seg_count += 1
             total_mm += s.length_mm
         for v in rn.vias:
@@ -193,26 +283,46 @@ def _route_with_pcbnew(board_path: Path) -> dict:
             via.SetPosition(_pt(v.x, v.y))
             via.SetWidth(pcbnew.FromMM(v.size))
             via.SetDrill(pcbnew.FromMM(v.drill))
-            via.SetNetCode(ncode)
+            via.SetNetCode(code)
             board.Add(via)
             via_count += 1
 
-    pcbnew.SaveBoard(str(board_path), board)
-    logger.info("pcbnew auto-route: %d footprints, %d segments, %d vias",
-                placed, seg_count, via_count)
+    # 板框：已放器件包围盒 + 5mm 边距（与模拟引擎同一策略），画在 Edge.Cuts
+    xs: list = []
+    ys: list = []
+    for fp in board.GetFootprints():
+        bb = fp.GetBoundingBox()
+        xs += [pcbnew.ToMM(bb.GetLeft()), pcbnew.ToMM(bb.GetRight())]
+        ys += [pcbnew.ToMM(bb.GetTop()), pcbnew.ToMM(bb.GetBottom())]
+    outline: dict = {}
+    if xs and ys:
+        x0, x1 = min(xs) - 5.0, max(xs) + 5.0
+        y0, y1 = min(ys) - 5.0, max(ys) + 5.0
+        for (sx, sy, ex, ey) in ((x0, y0, x1, y0), (x1, y0, x1, y1),
+                                 (x1, y1, x0, y1), (x0, y1, x0, y0)):
+            shape = pcbnew.PCB_SHAPE(board)
+            shape.SetShape(pcbnew.SHAPE_T_SEGMENT)
+            shape.SetStart(_pt(sx, sy))
+            shape.SetEnd(_pt(ex, ey))
+            shape.SetLayer(pcbnew.Edge_Cuts)
+            shape.SetWidth(pcbnew.FromMM(0.1))
+            board.Add(shape)
+        outline = {"x": round(x1 - x0, 1), "y": round(y1 - y0, 1)}
 
-    # 板框尺寸：从 Edge.Cuts 包围盒取
-    bbox = board.GetBoardEdgesBoundingBox()
-    outline = {}
-    if bbox is not None:
-        outline = {
-            "x": round(pcbnew.ToMM(bbox.GetWidth()), 1),
-            "y": round(pcbnew.ToMM(bbox.GetHeight()), 1),
-        }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pcbnew.SaveBoard(str(board_out), board)
+    if not board_out.exists():
+        raise RuntimeError("pcbnew.SaveBoard 未产出板文件")
+
+    logger.info("pcbnew native: %d footprints placed, %d segments, %d vias",
+                placed, seg_count, via_count)
     return {
         "components_placed": placed,
+        "virtual_skipped": sorted(set(skipped)),
+        "nets": len(nets),
         "segments": seg_count,
         "vias": via_count,
-        "total_track_mm": round(total_mm, 1),
         "board_outline": outline,
+        "total_track_mm": round(total_mm, 1),
+        "note": "pcbnew 原生引擎：FootprintLoad 摆放 + 曼哈顿自动布线",
     }
