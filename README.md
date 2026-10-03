@@ -34,6 +34,7 @@
 | **D10** | `gerber.py` 把 `-o` 当文件名模板传 `%f-%i.gbr`，而 KiCad 10 的 `-o` 是**目录** → 建了个同名目录，`glob("*.gbr")` 又恰好把它匹配上 | **「报告成功却零 Gerber」，静默空结果，直接打样会出事** |
 | D11 | `basic_drc` 用 kiutils 回读板文件，而 kiutils 1.4.8 无法解析 KiCad 10 的板格式（`Net.from_sexpr` 对 `(net <code>)` 抛 `IndexError`） | 真实引擎下 pcb 阶段 500（已按引擎选择回读方式并兜底） |
 | D12 | `requirements.txt` 含 UTF-8 中文注释；Windows 上 locale 非 UTF-8（本机 GBK）的 Python 跑 `pip install -r` 报 `UnicodeDecodeError` | README 里的安装命令在 stock Windows 上是坏的 |
+| D13 | `vite.config.js` 没有 `/api` 开发代理，而 `client.js` 默认用同源相对路径 | `npm run dev` + 浏览器时请求打到 Vite 自己身上并 404，浏览器工作流实际不可用（现已加代理） |
 
 ## 快速开始
 
@@ -72,23 +73,44 @@ export DEEPSEEK_API_KEY=sk-xxxx        # 不设则自动降级规则引擎（见
 
 ### 4. 启动
 
-一键启动（推荐）：
+**推荐：后端用脚本启动。** 它会设置 `PYTHONUTF8` / `PYTHONUNBUFFERED`（中文日志不再乱码、
+也不会被缓冲吞掉），并在端口已被占用时复用已有实例而不是抢端口：
 
-```bash
-scripts/start.sh          # Windows: scripts\start.ps1
+```powershell
+# 若提示"禁止运行脚本"，先在本窗口放开：
+#   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\scripts\start-backend.ps1
 ```
 
-或分开启动：
+就绪判据：终端出现 `Uvicorn running on http://127.0.0.1:8710`。
 
-```bash
-# 后端
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8710 --app-dir backend
+前端二选一：
 
-# 前端（开发模式，另开终端）
-cd frontend && npm run electron:dev
+```powershell
+cd frontend
+
+# A) 浏览器开发（免 Electron，最快）。vite 已把 /api 代理到 127.0.0.1:8710
+npm run dev            # 然后打开 http://localhost:5173
+
+# B) Electron 桌面壳（首次会下载约 100MB 的 Electron 二进制）
+npm run electron:dev
+```
+
+> `npm run dev` 依赖 `vite.config.js` 里的 `/api` 开发代理；没有它，浏览器会把
+> `/api/...` 打到 Vite 自己身上并 404。
+
+一键启动（后端 + Electron 壳）：
+
+```powershell
+.\scripts\start.ps1
 ```
 
 打开应用后：输入需求（如"做一个ESP32温控器：DS18B20测温，MOSFET控制加热片，OLED显示温度，WiFi上报MQTT"）→ 点"开始生成" → 观察六阶段进度 → 查看/下载产物。
+
+> 仓库里的 `.ps1` 脚本与 `requirements.txt` 一律**只用 ASCII**：Windows PowerShell 5.1
+> 在无 BOM 时按 ANSI 代码页读取 `.ps1`，pip 也可能用系统 locale 读取 requirements，
+> 非 ASCII 字节会导致脚本解析失败或 `UnicodeDecodeError`（见 D12）。中文注释放在
+> `.md` 文档里。
 
 ## Web 在线部署模式（免 Electron）
 
