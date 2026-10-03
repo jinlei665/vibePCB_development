@@ -272,6 +272,47 @@ def main() -> int:
     else:
         check("⑥ 未装 KiCad，跳过预览与可加载性断言", True, "kicad-cli 不可用")
 
+    # ---------------- ⑦ 手动编辑写回（CAD 化增量 3） ----------------
+    if (caps.get("engines") or {}).get("pcbnew_importable"):
+        bm = c.get(f"/api/projects/{pid}/board")
+        b0 = bm.json() if bm.status_code == 200 else {}
+        check("⑦ 板模型可读取（器件/走线/过孔/板框）",
+              bm.status_code == 200 and b0.get("counts", {}).get("tracks", 0) > 0
+              and len(b0.get("outline", [])) >= 4,
+              f"status={bm.status_code} counts={b0.get('counts')}")
+
+        fp0 = b0["footprints"][0]
+        nx, ny = round(fp0["x"] + 3.0, 3), round(fp0["y"] + 2.0, 3)
+        er = c.post(f"/api/projects/{pid}/board/edits", json={"edits": [
+            {"op": "move_footprint", "ref": fp0["ref"], "x": nx, "y": ny}]})
+        check("⑦ 编辑写回 .kicad_pcb 成功",
+              er.status_code == 200 and er.json().get("applied") == 1,
+              f"status={er.status_code} {er.text[:120]}")
+        moved = next((f for f in er.json().get("board", {}).get("footprints", [])
+                      if f["ref"] == fp0["ref"]), None) if er.status_code == 200 else None
+        check("⑦ 器件位置已更新",
+              bool(moved) and abs(moved["x"] - nx) < 0.01 and abs(moved["y"] - ny) < 0.01,
+              f"{fp0['ref']} ({fp0['x']},{fp0['y']}) -> ({moved['x']},{moved['y']})" if moved else "未找到")
+
+        bad = c.post(f"/api/projects/{pid}/board/edits", json={"edits": [
+            {"op": "move_footprint", "ref": "NO_SUCH_REF", "x": 1, "y": 1}]})
+        check("⑦ 非法编辑被拒且不落盘（原子性）", bad.status_code == 400, f"status={bad.status_code}")
+
+        if cli:
+            brd = settings.projects_dir / pid / "out" / "project.kicad_pcb"
+            rv = subprocess.run(
+                [cli, "pcb", "export", "svg", "-o", str(brd.parent / "_verify_board.svg"),
+                 "--layers", "F.Cu", "--mode-single", "--fit-page-to-board",
+                 "--exclude-drawing-sheet", str(brd)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            check("⑦ 编辑后板文件仍能被 KiCad 加载（写回有效）", rv.returncode == 0,
+                  f"exit={rv.returncode}")
+
+        rv2 = c.post(f"/api/projects/{pid}/board/revert")
+        check("⑦ 撤销全部编辑（revert）成功", rv2.status_code == 200, f"status={rv2.status_code}")
+    else:
+        check("⑦ 未装 KiCad(pcbnew)，跳过编辑写回断言", True, "pcbnew 不可用")
+
     failed = [r for r in RESULTS if not r[1]]
     print()
     print(f"===== {len(RESULTS) - len(failed)}/{len(RESULTS)} passed =====")

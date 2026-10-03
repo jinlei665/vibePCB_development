@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import PreviewPanel from '../components/PreviewPanel.jsx';
+import BoardEditor from '../components/BoardEditor.jsx';
 
 export default function ArtifactsPage({ project, onBack }) {
   const [stage, setStage] = useState('schematic');
   const [arts, setArts] = useState([]);
   const [text, setText] = useState('');
+  const [showEditor, setShowEditor] = useState(false);
   useEffect(() => { api.artifacts(project.project_id, stage).then(d => setArts(d.artifacts || [])).catch(() => setArts([])); }, [stage, project.project_id]);
   const view = async (path) => { setText('加载中…'); setText(await api.artifactText(project.project_id, stage, path)); };
   return (
@@ -33,7 +35,14 @@ export default function ArtifactsPage({ project, onBack }) {
       {text && <pre style={{ background: '#f6f6f6', padding: 12, marginTop: 12, maxHeight: 400, overflow: 'auto', fontSize: 12 }}>{text}</pre>}
       {/* 预览随 tab 切换联动：看 pcb 产物时显示 PCB，看 schematic 时显示原理图 */}
       <PreviewPanel project={project} refreshKey={stage} height={460} />
-      <button style={{ marginTop: 12 }} onClick={onBack}>← 返回流水线</button>
+
+      <div style={{ marginTop: 12 }}>
+        <button onClick={() => setShowEditor((v) => !v)}>
+          {showEditor ? '收起 PCB 编辑器' : '✎ 打开 PCB 编辑器（手动调整）'}
+        </button>
+        <button style={{ marginLeft: 8 }} onClick={onBack}>← 返回流水线</button>
+      </div>
+      {showEditor && <BoardEditor project={project} />}
     </div>
   );
 }

@@ -45,7 +45,7 @@ AI 生成 + 实时预览 + 轻量编辑，重度编辑一键交给 KiCad（`pcbn
 |-|-|-|
 | 1 | 实时预览：kicad-cli 渲染原理图/PCB 为 SVG，随阶段推进自动刷新；一键在 KiCad 中打开精修 | ✅ 已完成 |
 | 2 | 原理图真实连线：梳形总线布线（引脚→短桩→通道 lane→总线），实测 162 wire / 65 junction；**连接关系与 skidl 权威网表逐引脚一致**（kicad-cli 导出比对） | ✅ 已完成 |
-| 3 | 交互式 PCB 编辑：Canvas 叠加层拖拽器件、拖/加/删走线与过孔、栅格吸附，写回 `.kicad_pcb` | ⏳ 待做 |
+| 3 | 交互式 PCB 编辑：Canvas 叠加层拖拽器件/走线、平移与删除过孔、两点画线、栅格吸附，批量写回 `.kicad_pcb` | ✅ 已完成 |
 | 4 | 器件/封装库浏览与编辑：基于 `footprint_map.json` 与内置快照库 | ⏳ 待做 |
 
 设计约束（已定）：
@@ -326,6 +326,11 @@ GET  .../artifacts/{stage}?path=...&download=1      附件下载
   常驻服务里这些文件名取自 skidl 对「最外层脚本」的误判（本机为 `threading`），
   属纯噪音，不影响任何产物；仓库已在 `.gitignore` 忽略这些模式。根治需要上游修复
   `skidl/scriptinfo.py` 的栈遍历（循环缺少 `break`，见 D8）
+- **KiCad 10 的 `PCB_VIA::GetWidth()` 不带图层参数会触发 C++ assert 并直接 abort 整个
+  Python 进程**（`pcb_track.cpp:387`），Python 侧 try/except **抓不到**。读写板文件时
+  必须用 `GetFrontWidth()` / `GetDrillValue()`。同理过孔宽度不要直接 `SetWidth`，
+  走「删除 + 新增」。见 `backend/app/services/board_edit.py`
+- KiCad 的 `.kicad_sch` 解析器不接受 `lib_symbols` 内 pin 上的 `(uuid ...)`（见 D14）
 
 ## License
 

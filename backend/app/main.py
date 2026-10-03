@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import artifacts, projects, render, stages
+from .api import artifacts, board, projects, render, stages
 from .config import APP_NAME, APP_VERSION, settings
 from .core.engines import engine_status
 
@@ -50,6 +50,7 @@ app.include_router(projects.router)
 app.include_router(stages.router)
 app.include_router(artifacts.router)
 app.include_router(render.router)
+app.include_router(board.router)
 
 
 @app.exception_handler(Exception)

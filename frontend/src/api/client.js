@@ -61,4 +61,8 @@ export const api = {
   },
   // 交给 KiCad GUI 精修（仅本机可用）
   openInKiCad: (id, tool) => req(`/api/projects/${id}/open/${tool}`, { method: 'POST' }),
+  // PCB 板模型与编辑（增量 3）：读模型 → 画布叠加层 → 批量写回 .kicad_pcb
+  board: (id) => req(`/api/projects/${id}/board`),
+  boardEdits: (id, edits) => req(`/api/projects/${id}/board/edits`, { method: 'POST', body: JSON.stringify({ edits }) }),
+  boardRevert: (id) => req(`/api/projects/${id}/board/revert`, { method: 'POST' }),
 };
