@@ -64,31 +64,78 @@ def run_gerber(ws: ProjectWorkspace) -> dict:
         "format": {
             "gerber": "RS-274X (Extended), 单位 mm, 坐标格式 3.4",
             "drill": "Excellon, 单位 mm",
-            "layers": ["F.Cu", "B.Cu", "Edge.Cuts"],
+            # 真实导出含阻焊/丝印（7 层 + job 文件），模拟写入器只出 3 层
+            "layers": (_KICAD_CLI_LAYERS.split(",") if engine == "kicad-cli"
+                       else ["F.Cu", "B.Cu", "Edge.Cuts"]),
         },
     }
 
 
 # ---------------------------------------------------------------- kicad-cli 真实路径
+# 真实导出请求的层（kicad-cli 用未翻译的层名）
+_KICAD_CLI_LAYERS = "F.Cu,B.Cu,F.Mask,B.Mask,Edge.Cuts,F.SilkS,B.SilkS"
+
+
+def _kicad_cli() -> str:
+    """用 engines 探测到的 kicad-cli 绝对路径。
+
+    此前这里写死 `"kicad-cli"`，隐含要求它恰好在 PATH 上；而 engines.py 已能自动定位
+    （PATH → venv 基础解释器目录 → 常见安装目录）。两者不一致会造成「capabilities 报告
+    kicad-cli 可用，gerber 阶段却 FileNotFoundError 回落模拟」（质检 D10）。
+    """
+    return engine_status().kicad_cli_path or "kicad-cli"
+
+
 def _export_with_kicad_cli(board_path: Path, out_dir: Path) -> list:
+    """kicad-cli 真实导出（KiCad 10.0.6 实测）。
+
+    修掉两个真实坑（质检 D10）：
+
+    * `-o/--output` 是**输出目录**，不是文件名模板。原实现传 `out/%f-%i.gbr`，kicad-cli
+      于是新建了一个名为 `%f-%i.gbr` 的**目录**；而 `glob("*.gbr")` 恰好把这个目录也匹配
+      上，结果「成功返回」却**一个 Gerber 都没产出**，还标着 degraded=False —— 静默空
+      结果，比模拟引擎更糟，直接拿去打样会出事。
+    * 默认走 Protel 扩展名（.gtl/.gbl/.gm1…）。加 `--no-protel-ext` 才得到与模拟路径
+      一致的 `.gbr`，并额外产出 `.gbrjob`（内含层/钻孔映射，对板厂友好）。
+    """
+    cli = _kicad_cli()
     result = subprocess.run(
         [
-            "kicad-cli", "pcb", "export", "gerbers",
-            "-o", str(out_dir / "%f-%i.gbr"),
-            "--layers", "F.Cu,B.Cu,F.Mask,B.Mask,Edge.Cuts,F.SilkS,B.SilkS",
+            cli, "pcb", "export", "gerbers",
+            "-o", str(out_dir),
+            "--no-protel-ext",
+            "--layers", _KICAD_CLI_LAYERS,
             str(board_path),
         ],
         capture_output=True, text=True, timeout=240,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"kicad-cli exit {result.returncode}: {result.stderr[-300:]}")
+        raise RuntimeError(
+            f"kicad-cli gerbers exit {result.returncode}: "
+            f"{(result.stderr or result.stdout)[-300:]}"
+        )
+
     drill = subprocess.run(
-        ["kicad-cli", "pcb", "export", "drill", "-o", str(out_dir), str(board_path)],
+        [cli, "pcb", "export", "drill", "-o", str(out_dir), str(board_path)],
         capture_output=True, text=True, timeout=120,
     )
     if drill.returncode != 0:
-        raise RuntimeError(f"kicad-cli drill exit {drill.returncode}")
-    return sorted(out_dir.glob("*.gbr")) + sorted(out_dir.glob("*.drl"))
+        raise RuntimeError(
+            f"kicad-cli drill exit {drill.returncode}: "
+            f"{(drill.stderr or drill.stdout)[-200:]}"
+        )
+
+    # 只收**真正的文件**（排除目录）并做产出校验：没有 Gerber 即视为失败，让上层回落到
+    # 已验证可用的模拟写入器，而不是把空结果报成成功。
+    gbr = [p for p in sorted(out_dir.glob("*.gbr")) if p.is_file() and p.stat().st_size > 0]
+    drl = [p for p in sorted(out_dir.glob("*.drl")) if p.is_file() and p.stat().st_size > 0]
+    job = [p for p in sorted(out_dir.glob("*.gbrjob")) if p.is_file() and p.stat().st_size > 0]
+    if not gbr:
+        raise RuntimeError(
+            f"kicad-cli 未产出任何 Gerber 文件（输出目录 {out_dir}）；"
+            "请检查 -o 语义与 --layers 是否与当前 kicad-cli 版本匹配"
+        )
+    return gbr + drl + job
 
 
 # ---------------------------------------------------------------- 模拟 RS-274X

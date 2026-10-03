@@ -12,13 +12,62 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import shutil
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from ..config import settings
 
 logger = logging.getLogger("vibepcb.engines")
+
+# kicad-cli 兜底搜索目录（显式 env / PATH / venv 基础解释器目录都找不到时使用）
+_KICAD_SEARCH_ROOTS = [
+    Path(r"C:\Program Files\KiCad"),
+    Path(r"C:\Program Files (x86)\KiCad"),
+    Path(r"D:\KiCad"), Path(r"E:\KiCad"), Path(r"F:\KiCad"),
+]
+
+
+def _find_kicad_cli() -> Optional[str]:
+    """定位 kicad-cli，按可靠度从高到低尝试。
+
+    1. `VIBEPCB_KICAD_BIN` 显式指定；
+    2. PATH（shutil.which）；
+    3. **venv 基础解释器所在目录** —— 关键一条：Windows 上要 `import pcbnew` 必须用
+       KiCad 自带 Python 创建 venv（两边 MSVC 工具链不同就会 "DLL initialization
+       routine failed"），此时 `sys.base_prefix` 就是 KiCad 的 bin，kicad-cli 与
+       pcbnew 天然同目录，用户不需要改系统 PATH；
+    4. 常见安装目录兜底。
+    """
+    exe = "kicad-cli.exe" if os.name == "nt" else "kicad-cli"
+
+    explicit = settings.kicad_bin.strip()
+    if explicit:
+        cand = Path(explicit) / exe
+        if cand.is_file():
+            return str(cand)
+
+    found = shutil.which("kicad-cli")
+    if found:
+        return found
+
+    try:
+        base = Path(sys.base_prefix)
+        for cand in (base / exe, base / "bin" / exe):
+            if cand.is_file():
+                return str(cand)
+    except Exception:  # noqa: BLE001
+        pass
+
+    for root in _KICAD_SEARCH_ROOTS:
+        if root.is_dir():
+            for hit in sorted(root.rglob(exe)):
+                if hit.is_file():
+                    return str(hit)
+    return None
 
 
 @dataclass
@@ -44,7 +93,7 @@ def _detect() -> EngineStatus:
             logger.warning("import pcbnew failed: %s", exc)
             st.pcbnew_importable = False
 
-    cli = shutil.which("kicad-cli")
+    cli = _find_kicad_cli()
     if cli:
         st.kicad_cli_path = cli
         st.kicad_installed = st.kicad_installed or True

@@ -33,6 +33,11 @@ class Settings:
 
     # VibePCB
     pcb_engine: str = field(default_factory=lambda: _env("VIBEPCB_PCB_ENGINE", "auto"))
+    # KiCad 定位（可选）：显式指定 KiCad 的 bin 目录（内含 kicad-cli）。
+    # 不设置时自动探测：PATH → venv 基础解释器目录 → 常见安装目录。
+    # 当 venv 用 KiCad 自带 Python 创建时（Windows 上 import pcbnew 的必要条件），
+    # sys.base_prefix 本身就是 KiCad 的 bin，通常无需设置。
+    kicad_bin: str = field(default_factory=lambda: _env("VIBEPCB_KICAD_BIN", ""))
     port: int = field(default_factory=lambda: int(_env("VIBEPCB_PORT", "8710")))
     data_dir: Path = field(
         default_factory=lambda: Path(_env("VIBEPCB_DATA_DIR", str(Path.home() / ".vibepcb"))).expanduser()

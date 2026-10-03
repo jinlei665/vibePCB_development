@@ -1,5 +1,11 @@
-# VibePCB 后端依赖（版本锁定，架构文档 6.4）
-# 注意：kinet2pcb 锁 1.1.4（文档 6.4 为 1.1.3，但 skidl 2.2.1 依赖 kinet2pcb>=1.1.4，无法共装 1.1.3）
+# VibePCB backend dependencies (version-locked, see architecture doc 6.4)
+#
+# NOTE: kinet2pcb is pinned to 1.1.4. Doc 6.4 lists 1.1.3, but skidl 2.2.1 requires
+#       kinet2pcb>=1.1.4, so 1.1.3 cannot be co-installed.
+#
+# Keep this file ASCII-only. On Windows pip may read it with the OS locale encoding
+# (e.g. GBK); non-ASCII bytes then break `pip install -r requirements.txt` with
+# UnicodeDecodeError. Comments in Chinese belong in the .md docs instead.
 fastapi==0.115.12
 uvicorn==0.34.2
 httpx==0.28.1
