@@ -112,6 +112,16 @@ npm run electron:dev
 > 非 ASCII 字节会导致脚本解析失败或 `UnicodeDecodeError`（见 D12）。中文注释放在
 > `.md` 文档里。
 
+### 启动排障
+
+| 现象 | 原因与处理 |
+|-|-|
+| `Electron failed to install correctly` | Electron 二进制没下完（`node_modules/electron` 里缺 `path.txt`/`dist`）。重跑 `node node_modules\electron\install.js`。GitHub 可能极慢（本机实测 0 B/s），先设国内镜像再重试：`$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'`（实测 9.8 MB/s，14 秒装完） |
+| Electron 报 `Cannot read properties of undefined (reading 'whenReady')` | 环境里被设了 `ELECTRON_RUN_AS_NODE=1`，Electron 会退化为纯 Node，`require('electron')` 拿到的只是 npm 包导出的路径字符串（于是 `app` 为 undefined）。执行 `Remove-Item Env:ELECTRON_RUN_AS_NODE` 后重试 |
+| 后端命令"没有任何输出" | 多是控制台编码/缓冲导致的假象。用 `.\scripts\start-backend.ps1`，它设置了 `PYTHONUTF8` / `PYTHONUNBUFFERED` / `PYTHONIOENCODING` |
+| 浏览器打开 5173 但接口 404 | 确认后端在 8710；`vite.config.js` 的 `/api` 代理负责转发（见 D13） |
+| `禁止运行脚本` / `UnauthorizedAccess` | 执行策略受限，先 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` |
+
 ## Web 在线部署模式（免 Electron）
 
 前端 API 基址**可配置**，默认同源相对路径——这意味着可以脱离 Electron 桌面壳，把前端构建产物当普通静态站点部署，与后端同域（或经反向代理同源）即可在线使用。
