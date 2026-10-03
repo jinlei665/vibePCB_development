@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from ..core.errors import StageError
 from ..core.workspace import WorkspaceError, get_project
@@ -25,8 +27,14 @@ def _error_response(exc: StageError) -> HTTPException:
 
 
 @router.post("/api/projects/{project_id}/pipeline")
-def run_pipeline(project_id: str, body: dict | None = None):
-    """一键流水线：stages=["all"] 或阶段名数组；响应为最终全景状态。"""
+def run_pipeline(project_id: str, body: dict | None = None, background: int = 0):
+    """一键流水线：stages=["all"] 或阶段名数组。
+
+    - 默认（background=0）同步执行，响应为最终全景状态 + pipeline_results（保持既有契约）；
+    - background=1 时立即返回 202，六个阶段在工作线程里推进，前端靠 1 秒轮询
+      GET /api/projects/{id} 看实时进度（质检 D1：同步长请求会让进度条全程不动，
+      也容易被反向代理超时切断）。
+    """
     body = body or {}
     stages = body.get("stages") or ["all"]
     try:
@@ -35,6 +43,24 @@ def run_pipeline(project_id: str, body: dict | None = None):
         raise HTTPException(404, detail={"error": {"code": "NOT_FOUND", "stage": "pipeline",
                                                    "message": f"项目不存在: {project_id}"}})
     user_input = body.get("prompt")
+
+    if background:
+        def _worker() -> None:
+            try:
+                pipeline_svc.run_stages(ws, stages, user_input=user_input)
+            except StageError as exc:
+                logger.warning("background pipeline %s stopped: [%s] %s",
+                               project_id, exc.code, exc.message)
+            except Exception:  # noqa: BLE001
+                logger.exception("background pipeline %s crashed", project_id)
+
+        threading.Thread(target=_worker, name=f"vibepcb-pipe-{project_id}", daemon=True).start()
+        return JSONResponse(
+            status_code=202,
+            content={"accepted": True, "project_id": project_id, "stages": stages,
+                     "message": "流水线已启动，请轮询 GET /api/projects/{id} 观察进度"},
+        )
+
     try:
         results = pipeline_svc.run_stages(ws, stages, user_input=user_input)
     except StageError as exc:

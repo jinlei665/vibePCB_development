@@ -13,3 +13,6 @@ out/
 skidl_REPL*
 threading*
 dbg_sel*
+# skidl 运行副产物（ERC 报告 / 备份库），名字来自 skidl 对「最外层脚本」的误判
+*.erc
+*_sklib.py

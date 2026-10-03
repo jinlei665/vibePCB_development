@@ -100,12 +100,28 @@ def _erc_report() -> dict[str, Any]:
 
 
 def _gen_netlist(out_dir: Path) -> dict[str, int]:
-    """生成 KiCad 9 网表；返回 parts/nets 统计。"""
+    """生成 KiCad 9 网表；返回 parts/nets 统计。
+
+    必须显式传 track_abs_path=True（质检 D8）。skidl 的 Circuit 默认
+    track_abs_path=False，此时它用 os.path.relpath(源文件, script_dir) 生成网表里的
+    "SKiDL Line" 字段。而在多盘符 Windows 上（本机 venv 在 F:，基础解释器 stdlib 在
+    D:\\Anaconda），skidl/scriptinfo.py 的 scriptinfo() 因为循环里没有 break
+    （scriptinfo.py:53-59）会把 script_dir 解析成**最外层**未被跳过的帧——即 D: 盘的
+    threading.py / concurrent\\futures\\thread.py，于是 relpath 抛
+        ValueError: path is on mount 'F:', start on mount 'D:'
+    导致 schematic 阶段 500。track_abs_path=True 会让 skidl 在
+    tools/kicad9/gen_netlist.py:116、:200、:309 三处都走**绝对路径**分支，彻底绕开
+    这个 relpath 调用；该字段只是网表里的源码溯源注释，不影响电气内容。
+    """
     import skidl
 
     buf = io.StringIO()
     with redirect_stdout(buf), redirect_stderr(buf):
-        skidl.generate_netlist(tool=skidl.KICAD9, file_=str(out_dir / "project.net"))
+        skidl.generate_netlist(
+            tool=skidl.KICAD9,
+            file_=str(out_dir / "project.net"),
+            track_abs_path=True,
+        )
     text = (out_dir / "project.net").read_text(encoding="utf-8")
     return {
         "parts": text.count("(comp\n") + text.count("(comp "),

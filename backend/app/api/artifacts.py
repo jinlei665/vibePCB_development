@@ -19,8 +19,8 @@ router = APIRouter()
 
 # 阶段 → 产物 kind 映射
 STAGE_KINDS = {
-    "parse": set(),
-    "components": set(),
+    "parse": {"spec"},
+    "components": {"bom"},
     "schematic": {"netlist", "schematic"},
     "pcb": {"pcb"},
     "firmware": {"firmware"},

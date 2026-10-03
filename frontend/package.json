@@ -23,5 +23,28 @@
     "concurrently": "^9.1.0",
     "wait-on": "^8.0.1",
     "cross-env": "^7.0.3"
+  },
+  "build": {
+    "appId": "com.vibepcb.desktop",
+    "productName": "VibePCB",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ]
+    }
   }
 }

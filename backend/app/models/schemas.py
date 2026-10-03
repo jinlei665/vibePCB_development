@@ -206,10 +206,21 @@ class FirmwareFile(BaseModel):
     sha256: str
 
 
+class SelfCheckItem(BaseModel):
+    name: str
+    passed: bool
+    detail: dict[str, Any] = {}
+
+
 class FirmwareSelfCheck(BaseModel):
-    balanced_braces: bool
-    balanced_quotes: bool
-    includes_resolved: bool
+    """与 services/firmware.py::self_check 的实际返回对齐。
+
+    此前这里声明的是 balanced_braces / balanced_quotes / includes_resolved 三个
+    布尔字段，但实现返回的是 {"passed", "checks": [...]}，属契约漂移（已由
+    scripts/verify_mvp.py 的断言暴露）。
+    """
+    passed: bool
+    checks: list[SelfCheckItem] = []
 
 
 class FirmwareResponse(BaseModel):

@@ -134,6 +134,9 @@ def run_parse(ws: ProjectWorkspace, prompt: str) -> dict[str, Any]:
     spec_file = ws.root / "in" / "spec.json"
     old_spec = spec_file.read_text(encoding="utf-8") if spec_file.exists() else None
     spec_file.write_text(spec.model_dump_json(indent=2), encoding="utf-8")
+    # 登记产物：此前只写盘不登记，导致 /api/projects/{id}/artifacts/parse 永远
+    # 返回空列表，前端既看不到也下不了第一步的 spec.json（质检 D2）。
+    ws.register_artifact("in/spec.json", "spec")
     # spec 变化 → 级联重置下游已完成阶段，避免新需求 + 旧产物错配（质检 P2）
     if old_spec is not None and old_spec != spec_file.read_text(encoding="utf-8"):
         ws.reset_stages_after_parse()

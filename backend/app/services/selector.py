@@ -193,4 +193,6 @@ def run_components(ws: ProjectWorkspace, spec: dict[str, Any], prompt: str) -> d
     (ws.root / "in" / "bom.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    # 登记产物：否则 /artifacts/components 为空，前端看不到第二步的 bom.json（质检 D2）。
+    ws.register_artifact("in/bom.json", "bom")
     return result

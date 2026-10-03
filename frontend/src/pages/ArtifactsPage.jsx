@@ -11,7 +11,7 @@ export default function ArtifactsPage({ project, onBack }) {
     <div>
       <h2>产物 · {project.name}</h2>
       <div style={{ margin: '8px 0' }}>
-        {['schematic', 'pcb', 'firmware', 'gerber'].map(s => (
+        {['parse', 'components', 'schematic', 'pcb', 'firmware', 'gerber'].map(s => (
           <button key={s} onClick={() => { setStage(s); setText(''); }} style={{ marginRight: 8, fontWeight: s === stage ? 'bold' : 'normal' }}>{s}</button>
         ))}
       </div>

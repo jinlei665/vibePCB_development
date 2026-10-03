@@ -1,10 +1,35 @@
-# VibePCB（未实现）
+# VibePCB
 
 自然语言 → 需求解析 → 原理图/网表 → PCB 布局布线 → ESP32 固件 → Gerber 制造文件，一键生成的桌面应用 MVP。
 
-- **后端**：Python FastAPI（127.0.0.1:8710），六阶段流水线，skidl + kiutils 生成 KiCad 9 格式产物
+- **后端**：Python FastAPI（127.0.0.1:8710），六阶段流水线，skidl + kiutils 生成 KiCad 格式产物
 - **前端**：React + Electron 桌面壳（输入 → 1 秒轮询进度 → 产物查看/下载）
 - **AI**：DeepSeek（可选；未配置自动降级规则引擎）
+
+## 当前状态（本机实测）
+
+> 2026-10-03 于 Windows + Python 3.11.5 完成端到端验证。
+
+| 项目 | 状态 |
+|-|-|
+| 六阶段流水线（无 KiCad、无 API Key 的降级路径） | ✅ `overall=done`，约 2–3 秒跑完 |
+| 回归脚本 `scripts/verify_fixes.py` | ✅ 29/29 通过（退出码 0） |
+| MVP 五步验收 `scripts/verify_mvp.py` | ✅ 35/35 通过（退出码 0） |
+| 中文需求端到端编码 | ✅ UTF-8 无损（`prompt.txt` 与 spec 逐字一致，关键词命中正常） |
+| DeepSeek 真实 AI 链路 | ⏳ 需配置 `DEEPSEEK_API_KEY` |
+| KiCad 真实引擎（pcbnew / kicad-cli） | ⏳ 需本机安装 KiCad 并让 venv 能 `import pcbnew` |
+
+### 已修复的关键缺陷
+
+| 编号 | 问题 | 影响 |
+|-|-|-|
+| **D8** | skidl 在多盘符 Windows 下把 `script_dir` 解析到**基础解释器**所在盘（本机 `D:\Anaconda`），随后 `os.path.relpath(源文件在 F:, script_dir 在 D:)` 抛 `ValueError: path is on mount 'F:', start on mount 'D:'` | **schematic 阶段直接 500，整条流水线走不下去** |
+| D1 | 前端先 `await` 同步的 `/pipeline` 长请求、等跑完才开始轮询 | 进度条全程不动，结束时一次性全变 done |
+| D2 | `in/spec.json` / `in/bom.json` 只写盘不登记，且 artifacts 路由把 parse/components 的 kind 过滤成空集 | 前两步产物在前端既看不到也下不了 |
+| D3 | `pcb.py` 真实引擎硬编码 `python3`，而 Windows 上该名字常是 Microsoft Store 的 0 字节别名占位 | 装了 KiCad 也永远静默回落模拟引擎 |
+| D4 | 真实引擎只调 kinet2pcb 做「网表→摆放」，返回的 segments/vias 是 0 占位 | 真实引擎下产出无走线的裸板 |
+| D5 | Electron 壳 spawn 系统 `python`（本机指向 Anaconda，没有 fastapi/skidl），与 `start.ps1` 建的 `.venv` 不一致 | 单独跑 `npm run electron:dev` 后端起不来；`start.ps1` 会起两个后端抢 8710 |
+| D6 | `vite.config.js` 缺 `base: './'`；`package.json` 无 electron-builder 配置 | Electron 以 `file://` 加载 dist 时资源 404 → 白屏 |
 
 ## 快速开始
 
@@ -71,7 +96,7 @@ cd frontend && npm run electron:dev
 |-|-|-|
 | 同源相对路径（默认） | 不做任何配置，`npm run build` | Web 在线部署：前后端同域/反代 |
 | 构建参数注入 | `VITE_API_BASE=http://host:8710 npx vite build`，或 `npm run build:desktop`（读 `frontend/.env.desktop`） | Electron 桌面壳（file:// 加载，必须绝对地址）、前后端分域 |
-| 运行时注入 | 在 `index.html` 加 `<script>window.__VIBEPCB_API_BASE__='http://host:8710'</script>` | 同一份静态产物指向不同后端（优先级低于构建参数） |
+| 运行时注入 | 在 `index.html` 加 `<script>window.__VIBEPCB_API_BASE__='http://host:8710'</script>`，或由 Electron preload 自动注入 | 同一份静态产物指向不同后端（**优先级最高**，高于构建期参数） |
 
 ### 在线部署步骤（同源反代示例，nginx）
 
@@ -113,6 +138,42 @@ server {
 
 后端 CORS 已按上述环境变量收敛（不再通配 `*`）；分域直连（`VITE_API_BASE` 指向后端地址）在配置好 CORS 后同样可用。
 
+## KiCad 真实引擎（可选，推荐）
+
+不装 KiCad 也能跑完整流程（PCB 走内置模拟引擎 + 自研 RS-274X Gerber 写入器）。
+要启用**真实** pcbnew 布局布线与 kicad-cli Gerber 导出，需要注意一点：
+`pcbnew` 是 KiCad 自带的 CPython 扩展，**其 ABI 与 Python 小版本绑定**，所以 venv 的
+Python 版本必须与 KiCad 自带解释器一致。
+
+```powershell
+# 1. 安装 KiCad 10.0.x（或从 https://downloads.kicad.org/kicad/windows/explore/stable 下载）
+winget install --id KiCad.KiCad -e
+
+# 2. 查看 KiCad 自带 Python 的小版本
+& "C:\Program Files\KiCad\10.0\bin\python.exe" --version
+
+# 3. 若与现有 .venv 不一致，用 KiCad 的 Python 重建 .venv（保证 pcbnew ABI 匹配）
+Remove-Item -Recurse -Force .venv
+& "C:\Program Files\KiCad\10.0\bin\python.exe" -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 4. 让 venv 能 import pcbnew，并让 kicad-cli 进 PATH
+.\.venv\Scripts\python.exe scripts\setup_kicad_path.py
+
+# 5. 自检
+curl http://127.0.0.1:8710/api/capabilities
+```
+
+判据：`pcb_engine_selected` 变为 `"pcbnew"`、`pcbnew_available` 与
+`kicad_cli_available` 均为 `true`，且 pcb 阶段响应 `engine == "pcbnew(kinet2pcb)"`、
+`degraded == false`。若真实引擎启动失败，响应里会带 `degraded_reason` 说明原因，
+不再静默回落。
+
+> **多盘符提示**：若 `.venv` 与其基础 Python 不在同一盘符，skidl 会把 `script_dir`
+> 解析到基础解释器所在盘并触发跨盘符 `relpath` 异常。本仓库已在
+> `backend/app/services/schematic.py` 用 skidl 官方的 `track_abs_path=True` 规避
+> （见上文 D8），无需额外处理。
+
 ## 降级模式说明
 
 | 环境 | 行为 | 响应标记 |
@@ -146,7 +207,8 @@ GET  /api/capabilities                              引擎探测结果
 POST /api/projects                                  创建项目 {"name", "prompt"}
 GET  /api/projects/{id}                             状态全景（前端 1 秒轮询）
 POST /api/projects/{id}/{stage}                     单阶段执行
-POST /api/projects/{id}/pipeline                    一键 {"stages": ["all"]}
+POST /api/projects/{id}/pipeline                    一键 {"stages": ["all"]}（同步，返回最终全景 + pipeline_results）
+POST /api/projects/{id}/pipeline?background=1       同上，但立即返回 202，进度靠轮询（前端使用此模式）
 GET  /api/projects/{id}/artifacts/{stage}           产物清单
 GET  .../artifacts/{stage}?path=...                 文本预览
 GET  .../artifacts/{stage}?path=...&download=1      附件下载
@@ -168,6 +230,10 @@ GET  .../artifacts/{stage}?path=...&download=1      附件下载
 - skidl 2.2.1 / kiutils 1.4.8（按架构文档 6.4）
 - kinet2pcb **1.1.4**（文档 6.4 写 1.1.3，但 skidl 2.2.1 依赖 kinet2pcb>=1.1.4，无法共装 1.1.3）
 - 布线为 MVP 级确定性正交布线（曼哈顿），非商用自动布线；产出可在 KiCad 中打开精修
+- skidl 会在**进程 CWD** 写 side-effect 文件（`*.erc` / `*.log` / `*_sklib.py`）。
+  常驻服务里这些文件名取自 skidl 对「最外层脚本」的误判（本机为 `threading`），
+  属纯噪音，不影响任何产物；仓库已在 `.gitignore` 忽略这些模式。根治需要上游修复
+  `skidl/scriptinfo.py` 的栈遍历（循环缺少 `break`，见 D8）
 
 ## License
 
