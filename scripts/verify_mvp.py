@@ -37,6 +37,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import pcb_simulated  # noqa: E402
 
 PROMPT = "做一个ESP32温控器：DS18B20测温，MOSFET控制加热片，OLED显示温度，WiFi上报MQTT"
 
@@ -246,6 +247,28 @@ def main() -> int:
         check("⑥ 生成的 .kicad_sch 能被 KiCad 加载（D14 回归护栏）",
               pr.returncode == 0,
               f"exit={pr.returncode} {(pr.stderr or '').strip()[:140]}")
+
+        # 增量 2 护栏：原理图的连接关系必须与 skidl 权威网表**逐引脚一致**。
+        # 这是"真的连上线了、而且连对了"的唯一客观判据 —— 外观再像也不算数。
+        # 历史上先后踩过：L 形串联把 11 个网络短接成 1 个、星形把 D1.2 并进 GND、
+        # 以及 __NOCONNECT 被当成真实网络。都靠这条断言拦住。
+        if pr.returncode == 0:
+            def _partition(path):
+                nl = pcb_simulated.parse_netlist(path)
+                out = {}
+                for nm, n in nl.nets.items():
+                    key = frozenset((node.ref, str(node.pin)) for node in n.nodes)
+                    norm = nm.strip().upper().replace("_", "")
+                    if len(key) >= 2 and norm not in ("NC", "NOCONNECT"):
+                        out[key] = nm
+                return out
+
+            a = _partition(settings.projects_dir / pid / "out" / "project.net")
+            b = _partition(out_net)
+            diff = set(a) ^ set(b)
+            check("⑥ 原理图连接关系与 skidl 权威网表逐引脚一致（增量 2 护栏）",
+                  set(a) == set(b),
+                  f"skidl {len(a)} 组 / 原理图导出 {len(b)} 组 / 差集 {len(diff)}")
     else:
         check("⑥ 未装 KiCad，跳过预览与可加载性断言", True, "kicad-cli 不可用")
 
