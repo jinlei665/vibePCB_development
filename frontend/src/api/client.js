@@ -65,4 +65,6 @@ export const api = {
   board: (id) => req(`/api/projects/${id}/board`),
   boardEdits: (id, edits) => req(`/api/projects/${id}/board/edits`, { method: 'POST', body: JSON.stringify({ edits }) }),
   boardRevert: (id) => req(`/api/projects/${id}/board/revert`, { method: 'POST' }),
+  // 器件/封装库（增量 4）
+  library: () => req('/api/library'),
 };

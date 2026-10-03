@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import PreviewPanel from '../components/PreviewPanel.jsx';
 import BoardEditor from '../components/BoardEditor.jsx';
+import LibraryPanel from '../components/LibraryPanel.jsx';
 
 export default function ArtifactsPage({ project, onBack }) {
   const [stage, setStage] = useState('schematic');
   const [arts, setArts] = useState([]);
   const [text, setText] = useState('');
   const [showEditor, setShowEditor] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   useEffect(() => { api.artifacts(project.project_id, stage).then(d => setArts(d.artifacts || [])).catch(() => setArts([])); }, [stage, project.project_id]);
   const view = async (path) => { setText('加载中…'); setText(await api.artifactText(project.project_id, stage, path)); };
   return (
@@ -40,9 +42,13 @@ export default function ArtifactsPage({ project, onBack }) {
         <button onClick={() => setShowEditor((v) => !v)}>
           {showEditor ? '收起 PCB 编辑器' : '✎ 打开 PCB 编辑器（手动调整）'}
         </button>
+        <button style={{ marginLeft: 8 }} onClick={() => setShowLibrary((v) => !v)}>
+          {showLibrary ? '收起器件库' : '⚙ 器件 / 封装库'}
+        </button>
         <button style={{ marginLeft: 8 }} onClick={onBack}>← 返回流水线</button>
       </div>
       {showEditor && <BoardEditor project={project} />}
+      {showLibrary && <LibraryPanel project={project} />}
     </div>
   );
 }

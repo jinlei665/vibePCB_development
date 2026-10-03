@@ -308,6 +308,34 @@ def main() -> int:
             check("⑦ 编辑后板文件仍能被 KiCad 加载（写回有效）", rv.returncode == 0,
                   f"exit={rv.returncode}")
 
+        # 增量 4：器件/封装库浏览 + 换封装（换封装必须保住焊盘网络）
+        libsnap = c.get("/api/library")
+        snap = libsnap.json() if libsnap.status_code == 200 else {}
+        check("⑧ 器件/封装库目录可读",
+              libsnap.status_code == 200
+              and len(snap.get("parts", [])) > 0
+              and len(snap.get("footprint_ids", [])) > 0
+              and all(i and ":" in i for i in snap.get("footprint_ids", [])),
+              f"器件 {len(snap.get('parts', []))} · 封装 {len(snap.get('footprint_ids', []))}")
+
+        two = next((f for f in b0["footprints"] if len(f["pads"]) == 2), None)
+        target_fp = next((i for i in snap.get("footprint_ids", [])
+                          if i.startswith("LED_SMD:") and two and i != two["fpid"]), None)
+        if two and target_fp:
+            nets_before = {p["num"]: p["net"] for p in two["pads"]}
+            sr = c.post(f"/api/projects/{pid}/board/edits", json={"edits": [
+                {"op": "set_footprint", "ref": two["ref"], "footprint": target_fp}]})
+            sw = next((f for f in sr.json().get("board", {}).get("footprints", [])
+                       if f["ref"] == two["ref"]), None) if sr.status_code == 200 else None
+            check("⑧ 换封装生效",
+                  bool(sw) and sw.get("fpid") == target_fp,
+                  f"{two['fpid']} -> {sw.get('fpid') if sw else None}")
+            check("⑧ 换封装未丢焊盘网络（网络已搬运）",
+                  bool(sw) and {p["num"]: p["net"] for p in sw["pads"]} == nets_before,
+                  f"{nets_before}")
+        else:
+            check("⑧ 跳过换封装断言（无合适器件）", True, "")
+
         rv2 = c.post(f"/api/projects/{pid}/board/revert")
         check("⑦ 撤销全部编辑（revert）成功", rv2.status_code == 200, f"status={rv2.status_code}")
     else:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from pathlib import Path
 from typing import Any
 
 from ..core.errors import StageError
@@ -26,6 +27,9 @@ logger = logging.getLogger("vibepcb.board")
 
 BOARD_REL = "out/project.kicad_pcb"
 BACKUP_REL = "out/.board_backup.kicad_pcb"
+
+# 内置封装快照库（换封装时从这里加载 .kicad_mod）
+FP_LIBS_DIR = Path(__file__).resolve().parent.parent / "templates" / "footprint_libs"
 
 # 编辑允许的图层（MVP：双面板）
 ALLOWED_LAYERS = ("F.Cu", "B.Cu")
@@ -77,6 +81,27 @@ def _pad_side(pcbnew, pad) -> str:
         return "F"
 
 
+def _set_fpid(pcbnew, fp, lib: str, name: str) -> None:
+    """给封装补上库标识。
+
+    `pcbnew.FootprintLoad()` **不会**带上库昵称，加载出来的 fpid 形如 ":R_0805_2012Metric"。
+    这样板里的封装在 KiCad 中没有库关联、也追不回来源。必须显式 SetFPID（质检 D18）。
+    """
+    try:
+        fp.SetFPID(pcbnew.LIB_ID(lib, name))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SetFPID failed (%s:%s): %s", lib, name, exc)
+
+
+def _fpid(fp) -> str:
+    """封装的 '库:名' 标识（用于展示与换封装）。"""
+    try:
+        fid = fp.GetFPID()
+        return f"{fid.GetLibNickname()}:{fid.GetLibItemName()}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def board_model(ws: ProjectWorkspace) -> dict[str, Any]:
     """读板 → 画布模型。坐标单位统一 mm，原点为图纸左上（KiCad 页面坐标）。"""
     pcbnew = _pcbnew()
@@ -102,6 +127,7 @@ def board_model(ws: ProjectWorkspace) -> dict[str, Any]:
         footprints.append({
             "ref": str(fp.GetReference()),
             "value": str(fp.GetValue()),
+            "fpid": _fpid(fp),
             "x": _mm(pcbnew.ToMM(fp.GetPosition().x)),
             "y": _mm(pcbnew.ToMM(fp.GetPosition().y)),
             "rot": round(float(fp.GetOrientationDegrees()), 3),
@@ -318,6 +344,45 @@ def apply_edits(ws: ProjectWorkspace, edits: list) -> dict[str, Any]:
                 raise StageError("INVALID_INPUT", "board",
                                  "过孔尺寸不支持直接修改，请删除后重新新增")
             t.SetWidth(pcbnew.FromMM(_check_width(e.get("width"))))
+
+        elif op == "set_value":
+            fp = _find_footprint(board, e.get("ref"))
+            if fp is None:
+                raise StageError("INVALID_INPUT", "board", f"器件不存在: {e.get('ref')!r}")
+            fp.SetValue(str(e.get("value") or ""))
+
+        elif op == "set_footprint":
+            # 换封装：从内置快照库加载新封装，替换后**按焊盘编号把网络搬过去**，
+            # 否则换完封装所有网络都会丢（焊盘全成未连接）。
+            fp = _find_footprint(board, e.get("ref"))
+            if fp is None:
+                raise StageError("INVALID_INPUT", "board", f"器件不存在: {e.get('ref')!r}")
+            fpid = str(e.get("footprint") or "")
+            if ":" not in fpid:
+                raise StageError("INVALID_INPUT", "board",
+                                 f"封装需写成 '库:名' 形式，收到 {fpid!r}")
+            lib, name = fpid.split(":", 1)
+            lib_dir = FP_LIBS_DIR / f"{lib}.pretty"
+            if not lib_dir.is_dir():
+                raise StageError("INVALID_INPUT", "board", f"内置快照库中没有: {lib}")
+            new_fp = pcbnew.FootprintLoad(str(lib_dir), name)
+            if new_fp is None:
+                raise StageError("INVALID_INPUT", "board", f"快照库中没有该封装: {fpid}")
+            _set_fpid(pcbnew, new_fp, lib, name)
+
+            old_nets = {str(p.GetNumber()): str(p.GetNetname() or "") for p in fp.Pads()}
+            new_fp.SetReference(fp.GetReference())
+            new_fp.SetValue(fp.GetValue())
+            new_fp.SetPosition(fp.GetPosition())
+            new_fp.SetOrientationDegrees(fp.GetOrientationDegrees())
+            for pad in new_fp.Pads():
+                nn = old_nets.get(str(pad.GetNumber()))
+                if nn:
+                    info = board.FindNet(nn)
+                    if info is not None:
+                        pad.SetNet(info)
+            board.Remove(fp)
+            board.Add(new_fp)
 
         else:
             raise StageError("INVALID_INPUT", "board", f"未知编辑操作: {op!r}")

@@ -233,6 +233,12 @@ def _run_pcbnew(netlist: Path, out_dir: Path) -> dict:
             logger.warning("pcbnew: FootprintLoad failed for %s (%s)", comp.ref, comp.footprint)
             skipped.append(comp.ref)
             continue
+        # FootprintLoad 不会带库昵称，必须显式补上：否则板里的封装在 KiCad 中显示为
+        # 「无库关联」（fpid 形如 ":R_0805_2012Metric"），也追不回来源（质检 D18）。
+        try:
+            fp.SetFPID(pcbnew.LIB_ID(fp_file.parent.name[: -len(".pretty")], fp_file.stem))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SetFPID failed for %s: %s", comp.ref, exc)
 
         x, y, rot = positions.get(comp.ref, (30.0, 30.0, 0.0))
         fp.SetPosition(_pt(x, y))

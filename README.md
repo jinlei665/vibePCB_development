@@ -46,7 +46,7 @@ AI 生成 + 实时预览 + 轻量编辑，重度编辑一键交给 KiCad（`pcbn
 | 1 | 实时预览：kicad-cli 渲染原理图/PCB 为 SVG，随阶段推进自动刷新；一键在 KiCad 中打开精修 | ✅ 已完成 |
 | 2 | 原理图真实连线：梳形总线布线（引脚→短桩→通道 lane→总线），实测 162 wire / 65 junction；**连接关系与 skidl 权威网表逐引脚一致**（kicad-cli 导出比对） | ✅ 已完成 |
 | 3 | 交互式 PCB 编辑：Canvas 叠加层拖拽器件/走线、平移与删除过孔、两点画线、栅格吸附，批量写回 `.kicad_pcb` | ✅ 已完成 |
-| 4 | 器件/封装库浏览与编辑：基于 `footprint_map.json` 与内置快照库 | ⏳ 待做 |
+| 4 | 器件/封装库浏览与编辑：15 个器件 + 9 个封装库/14 个封装快照；换封装时**按焊盘编号搬运网络**，不丢连接 | ✅ 已完成 |
 
 设计约束（已定）：
 
@@ -54,7 +54,10 @@ AI 生成 + 实时预览 + 轻量编辑，重度编辑一键交给 KiCad（`pcbn
 - 所有编辑必须**写回 KiCad 原生文件**（`.kicad_pcb` / `.kicad_sch`），不引入私有格式；
 - 每个阶段都要有回归护栏（见 `scripts/verify_mvp.py` 的 ⑥）；
 - 预览端点：`GET /api/projects/{id}/render/{kind}`（kind = `pcb` / `schematic`），
-  `POST /api/projects/{id}/open/{tool}`（仅限本机，否则 403）。
+  `POST /api/projects/{id}/open/{tool}`（仅限本机，否则 403）；
+- 板编辑端点：`GET /api/projects/{id}/board`、`POST .../board/edits`、`POST .../board/revert`
+  （整批原子：先全部校验再落盘；写盘前留 `.board_backup.kicad_pcb`）；
+- 库端点：`GET /api/library`、`GET /api/library/footprints`。
 
 ## 快速开始
 
