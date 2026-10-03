@@ -36,6 +36,26 @@
 | D12 | `requirements.txt` 含 UTF-8 中文注释；Windows 上 locale 非 UTF-8（本机 GBK）的 Python 跑 `pip install -r` 报 `UnicodeDecodeError` | README 里的安装命令在 stock Windows 上是坏的 |
 | D13 | `vite.config.js` 没有 `/api` 开发代理，而 `client.js` 默认用同源相对路径 | `npm run dev` + 浏览器时请求打到 Vite 自己身上并 404，浏览器工作流实际不可用（现已加代理） |
 
+## CAD 化路线图（进行中）
+
+目标：让 VibePCB 具备「实时看见 + 手动调整」的 CAD 式体验。定位是**双轨**——本应用负责
+AI 生成 + 实时预览 + 轻量编辑，重度编辑一键交给 KiCad（`pcbnew` / `eeschema`）。
+
+| 阶段 | 内容 | 状态 |
+|-|-|-|
+| 1 | 实时预览：kicad-cli 渲染原理图/PCB 为 SVG，随阶段推进自动刷新；一键在 KiCad 中打开精修 | ✅ 已完成 |
+| 2 | 原理图真实连线：当前符号之间 0 根 wire，需按引脚坐标布线并输出 `(wire ...)` / `(junction ...)` | ⏳ 进行中 |
+| 3 | 交互式 PCB 编辑：Canvas 叠加层拖拽器件、拖/加/删走线与过孔、栅格吸附，写回 `.kicad_pcb` | ⏳ 待做 |
+| 4 | 器件/封装库浏览与编辑：基于 `footprint_map.json` 与内置快照库 | ⏳ 待做 |
+
+设计约束（已定）：
+
+- 渲染走 **kicad-cli 出底图 + Canvas 叠加可拖拽图层** 的混合方案；
+- 所有编辑必须**写回 KiCad 原生文件**（`.kicad_pcb` / `.kicad_sch`），不引入私有格式；
+- 每个阶段都要有回归护栏（见 `scripts/verify_mvp.py` 的 ⑥）；
+- 预览端点：`GET /api/projects/{id}/render/{kind}`（kind = `pcb` / `schematic`），
+  `POST /api/projects/{id}/open/{tool}`（仅限本机，否则 403）。
+
 ## 快速开始
 
 ### 1. 复制文件
