@@ -155,11 +155,13 @@ def _lib_symbols_xml(used: dict[str, str]) -> str:
             y = 7.62 - (i % max(1, (n // 2 + 1))) * 2.54
             x = -10.16 if i < (n + 1) // 2 else 10.16
             rot = 0 if i < (n + 1) // 2 else 180
+            # 注意：lib_symbols 里的 pin **不能**带 (uuid ...)。KiCad 的 .kicad_sch
+            # 解析器只允许符号实例里的 (pin "1" (uuid ...))，库定义里多一个 uuid 会
+            # 直接 "加载原理图失败"（exit 3）—— 本机用二分法定位到此处（质检 D14）。
             lines.append(
                 f'        (pin {pin["func"]} line (at {x} {y} {rot}) (length 2.54) '
                 f'(name "{pin["name"]}" (effects (font (size 1.27 1.27)))) '
-                f'(number "{pin["num"]}" (effects (font (size 1.27 1.27)))) '
-                f'(uuid "{uuid.uuid4()}"))'
+                f'(number "{pin["num"]}" (effects (font (size 1.27 1.27)))))'
             )
         lines.append("      )")
         lines.append("    )")
@@ -167,8 +169,12 @@ def _lib_symbols_xml(used: dict[str, str]) -> str:
     return "  (lib_symbols\n" + "\n".join(blocks) + "\n  )"
 
 
-def _sch_symbol_instances(parts: list) -> str:
-    """符号实例网格摆位：MCU 居中，其余按序环绕。"""
+def _sch_symbol_instances(parts: list, root_uuid: str) -> str:
+    """符号实例网格摆位：MCU 居中，其余按序环绕。
+
+    instances 的 path 必须是**根图纸的 uuid**：KiCad 靠它把实例引用解析回图纸层级。
+    此前每个符号各生成一个随机 uuid，语义是错的（质检 D14 附带修正）。
+    """
     blocks = []
     for idx, p in enumerate(parts):
         col = idx % 4
@@ -193,7 +199,7 @@ def _sch_symbol_instances(parts: list) -> str:
             f'{pin_lines}\n'
             f'    (instances\n'
             f'      (project "vibepcb"\n'
-            f'        (path "/{uuid.uuid4()}" (reference "{p.ref}") (unit 1))\n'
+            f'        (path "/{root_uuid}" (reference "{p.ref}") (unit 1))\n'
             f'      )\n'
             f'    )\n'
             f'  )'
@@ -224,13 +230,14 @@ def _gen_kicad_sch(out_dir: Path, parts: list, net_names: list[str]) -> None:
             if info["symbol"].endswith(p.name) or p.name == k:
                 used.setdefault(k, (p.ref or "U")[0])
                 break
+    root_uuid = str(uuid.uuid4())
     content = (
         '(kicad_sch (version 20231120) (generator "eeschema") (generator_version "8.0")\n'
-        f'  (uuid "{uuid.uuid4()}")\n'
+        f'  (uuid "{root_uuid}")\n'
         '  (paper "A4")\n'
         '  (title_block (title "VibePCB generated schematic") (company "VibePCB"))\n'
         + _lib_symbols_xml(used) + "\n"
-        + _sch_symbol_instances(parts) + "\n"
+        + _sch_symbol_instances(parts, root_uuid) + "\n"
         + _sch_labels(net_names) + "\n"
         '  (sheet_instances (path "/" (page "1")))\n'
         ")\n"

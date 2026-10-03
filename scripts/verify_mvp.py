@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -222,6 +223,31 @@ def main() -> int:
     all_arts = detail.get("artifacts", [])
     check("⑤ 全流程登记了 6 类产物（spec/bom/netlist/schematic/pcb/firmware/gerber 至少 7 条）",
           len(all_arts) >= 7, f"count={len(all_arts)}")
+
+    # ---------------- ⑥ 实时预览 + KiCad 可加载性 ----------------
+    caps = c.get("/api/capabilities").json()
+    cli = ((caps.get("engines") or {}).get("kicad_cli_path")) if caps.get("kicad_cli_available") else None
+    if cli:
+        for kind in ("schematic", "pcb"):
+            rv = c.get(f"/api/projects/{pid}/render/{kind}")
+            check(f"⑥ {kind} 预览渲染为 SVG",
+                  rv.status_code == 200 and b"<svg" in rv.content,
+                  f"status={rv.status_code} bytes={len(rv.content)}")
+
+        # D14 回归护栏：生成的 .kicad_sch 必须能被 KiCad **真正加载**。
+        # 曾经因为 lib_symbols 里的 pin 多带一个 (uuid ...)，KiCad 直接
+        # "加载原理图失败"（exit 3），而我们的流水线却报告成功。
+        sch = settings.projects_dir / pid / "out" / "project.kicad_sch"
+        out_net = sch.parent / "_verify_load.net"
+        pr = subprocess.run(
+            [cli, "sch", "export", "netlist", "-o", str(out_net), str(sch)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        check("⑥ 生成的 .kicad_sch 能被 KiCad 加载（D14 回归护栏）",
+              pr.returncode == 0,
+              f"exit={pr.returncode} {(pr.stderr or '').strip()[:140]}")
+    else:
+        check("⑥ 未装 KiCad，跳过预览与可加载性断言", True, "kicad-cli 不可用")
 
     failed = [r for r in RESULTS if not r[1]]
     print()

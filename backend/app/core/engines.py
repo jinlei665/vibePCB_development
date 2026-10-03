@@ -120,7 +120,8 @@ def _cli_version(cli: str) -> Optional[str]:
     import subprocess
 
     try:
-        out = subprocess.run([cli, "version"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run([cli, "version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=10)
         return out.stdout.strip() or None
     except Exception:  # noqa: BLE001
         return None

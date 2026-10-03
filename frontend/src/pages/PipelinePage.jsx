@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
+import PreviewPanel from '../components/PreviewPanel.jsx';
 const STAGES = ['parse', 'components', 'schematic', 'pcb', 'gerber', 'firmware'];
 const LABELS = { parse: '需求解析', components: '元器件选型', schematic: '原理图/网表', pcb: 'PCB 布局布线', gerber: 'Gerber 导出', firmware: '固件生成' };
 const POLL_MS = 1000;
@@ -56,6 +57,8 @@ export default function PipelinePage({ project, onDone, onBack }) {
   };
 
   const stages = detail.stages || {};
+  // 各阶段状态的指纹：任一阶段从 pending→running→done 变化都会让预览自动重渲染
+  const stageSig = STAGES.map(s => `${s}:${(stages[s] || {}).status || 'pending'}`).join('|');
   return (
     <div>
       <h2>流水线 · {detail.name} <small style={{ fontSize: 12, color: '#888' }}>{detail.project_id}</small></h2>
@@ -82,6 +85,10 @@ export default function PipelinePage({ project, onDone, onBack }) {
           <button onClick={() => onDone(detail)}>查看已有产物 →</button>
         )}
       </div>
+
+      {/* 实时预览：refreshKey 由各阶段状态拼成，任何阶段状态一变就自动重渲染，
+          于是"生成过程中"就能逐步看到原理图与 PCB 成形 */}
+      <PreviewPanel project={detail} refreshKey={stageSig} />
     </div>
   );
 }

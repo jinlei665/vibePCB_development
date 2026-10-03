@@ -107,7 +107,7 @@ def _export_with_kicad_cli(board_path: Path, out_dir: Path) -> list:
             "--layers", _KICAD_CLI_LAYERS,
             str(board_path),
         ],
-        capture_output=True, text=True, timeout=240,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240,
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -117,7 +117,7 @@ def _export_with_kicad_cli(board_path: Path, out_dir: Path) -> list:
 
     drill = subprocess.run(
         [cli, "pcb", "export", "drill", "-o", str(out_dir), str(board_path)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
     )
     if drill.returncode != 0:
         raise RuntimeError(

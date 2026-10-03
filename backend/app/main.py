@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import artifacts, projects, stages
+from .api import artifacts, projects, render, stages
 from .config import APP_NAME, APP_VERSION, settings
 from .core.engines import engine_status
 
@@ -49,6 +49,7 @@ async def api_token_guard(request: Request, call_next):
 app.include_router(projects.router)
 app.include_router(stages.router)
 app.include_router(artifacts.router)
+app.include_router(render.router)
 
 
 @app.exception_handler(Exception)

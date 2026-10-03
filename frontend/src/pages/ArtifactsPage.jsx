@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
+import PreviewPanel from '../components/PreviewPanel.jsx';
 
 export default function ArtifactsPage({ project, onBack }) {
   const [stage, setStage] = useState('schematic');
@@ -30,6 +31,8 @@ export default function ArtifactsPage({ project, onBack }) {
         </tbody>
       </table>
       {text && <pre style={{ background: '#f6f6f6', padding: 12, marginTop: 12, maxHeight: 400, overflow: 'auto', fontSize: 12 }}>{text}</pre>}
+      {/* 预览随 tab 切换联动：看 pcb 产物时显示 PCB，看 schematic 时显示原理图 */}
+      <PreviewPanel project={project} refreshKey={stage} height={460} />
       <button style={{ marginTop: 12 }} onClick={onBack}>← 返回流水线</button>
     </div>
   );

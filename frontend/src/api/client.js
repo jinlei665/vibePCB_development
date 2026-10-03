@@ -42,4 +42,23 @@ export const api = {
   artifacts: (id, stage) => req(`/api/projects/${id}/artifacts/${stage}`),
   artifactText: (id, stage, path) => fetch(`${BASE}/api/projects/${id}/artifacts/${stage}?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then(r => r.text()),
   downloadUrl: (id, stage, path) => `${BASE}/api/projects/${id}/artifacts/${stage}?path=${encodeURIComponent(path)}&download=1`,
+  // 实时预览：后端用 kicad-cli 把 .kicad_pcb / .kicad_sch 渲染成 SVG（源文件更新时自动重渲染）
+  renderUrl: (id, kind, bust) => `${BASE}/api/projects/${id}/render/${kind}${bust ? `?t=${bust}` : ''}`,
+  // 预览必须走带鉴权头的 fetch：<img src> 无法附带自定义头，公网部署启用 token 后会 401。
+  // 404 视为「对应阶段还没产出」，用 error.notReady 标记，便于 UI 与真实错误区分。
+  renderBlob: async (id, kind, bust) => {
+    const u = `${BASE}/api/projects/${id}/render/${kind}${bust ? `?t=${bust}` : ''}`;
+    const r = await fetch(u, { headers: authHeaders() });
+    if (!r.ok) {
+      let m = `HTTP ${r.status}`;
+      try {
+        const j = await r.json();
+        m = j?.detail?.error?.message || j?.error?.message || m;
+      } catch (e) { /* 非 JSON 响应，保留状态码 */ }
+      throw Object.assign(new Error(m), { notReady: r.status === 404, status: r.status });
+    }
+    return r.blob();
+  },
+  // 交给 KiCad GUI 精修（仅本机可用）
+  openInKiCad: (id, tool) => req(`/api/projects/${id}/open/${tool}`, { method: 'POST' }),
 };
